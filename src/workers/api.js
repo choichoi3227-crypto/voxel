@@ -1,21 +1,17 @@
 // src/workers/api.js
 // ─────────────────────────────────────────────────────────────
-// REST API endpoints
-//   GET  /api/servers            → list all servers + live counts
-//   GET  /api/room/:id           → single room status
-//   GET  /api/leaderboard        → top 50 by kills (KV)
-//   POST /api/leaderboard        → submit score (JWT-lite, game-signed)
-//   GET  /api/health             → liveness
+// REST API endpoints (per-game-server worker)
+//   GET  /api/health                      → liveness + load (for control-plane polling)
+//   GET  /api/rooms                       → live rooms held in THIS isolate
+//   GET  /api/room/:serverId/:mode/:inst  → single room status
+//   GET  /api/leaderboard                 → top 100 by kills (KV)
+//   POST /api/leaderboard                 → submit score (lightweight signed token)
+//   POST /api/training/create             → spin up a personal training room on THIS worker
+//
+// NOTE: The full multi-server list (/api/servers from the client's point
+// of view) is served by the control-plane worker, not here — this worker
+// only knows about itself. See src/workers/control-plane.js.
 // ─────────────────────────────────────────────────────────────
-
-const SERVER_META = [
-  { id: 'asia-1',  name: 'Asia #1',   region: 'Seoul',      flag: '🇰🇷', workerUrl: 'https://voxel-strike-asia-1.YOUR_ACCOUNT.workers.dev'  },
-  { id: 'asia-2',  name: 'Asia #2',   region: 'Tokyo',      flag: '🇯🇵', workerUrl: 'https://voxel-strike-asia-2.YOUR_ACCOUNT.workers.dev'  },
-  { id: 'asia-3',  name: 'Asia #3',   region: 'Singapore',  flag: '🇸🇬', workerUrl: 'https://voxel-strike-asia-3.YOUR_ACCOUNT.workers.dev'  },
-  { id: 'eu-1',    name: 'EU #1',     region: 'Frankfurt',  flag: '🇩🇪', workerUrl: 'https://voxel-strike-eu-1.YOUR_ACCOUNT.workers.dev'    },
-  { id: 'us-west', name: 'US West',   region: 'Los Angeles',flag: '🇺🇸', workerUrl: 'https://voxel-strike-us-west.YOUR_ACCOUNT.workers.dev' },
-  { id: 'us-east', name: 'US East',   region: 'New York',   flag: '🇺🇸', workerUrl: 'https://voxel-strike-us-east.YOUR_ACCOUNT.workers.dev' },
-];
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -27,36 +23,39 @@ export async function handleAPI(request, env, ctx, registry, url) {
   const path   = url.pathname.replace('/api', '');
   const method = request.method;
 
-  // GET /api/health
-  if (path === '/health') {
-    return json({ status: 'ok', version: env.GAME_VERSION || '1.0.0', ts: Date.now() });
+  // GET /api/health — liveness + current load, polled by the control-plane
+  if (path === '/health' && method === 'GET') {
+    const totalPlayers = registry.totalPlayers();
+    const rooms = registry.list();
+    const maxCapacity = rooms.reduce((sum, r) => sum + (r.maxPlayers || 20), 0) || 20;
+    return json({
+      status:      'ok',
+      version:     env.GAME_VERSION || '1.0.0',
+      serverId:    env.SERVER_ID || 'unknown',
+      region:      env.SERVER_REGION || '',
+      ts:          Date.now(),
+      totalPlayers,
+      roomCount:   rooms.length,
+      fillRatio:   rooms.length ? Math.min(1, totalPlayers / Math.max(1, maxCapacity)) : 0,
+    });
   }
 
-  // GET /api/servers — merge static meta with live KV counts
-  if (path === '/servers' && method === 'GET') {
-    const counts = await fetchRoomCounts(env, SERVER_META.map(s => s.id));
-    const list = SERVER_META.map(s => ({
-      id:         s.id,
-      name:       s.name,
-      region:     s.region,
-      flag:       s.flag,
-      players:    counts[s.id] ?? 0,
-      maxPlayers: 20,
-    }));
-    return json(list);
+  // GET /api/rooms — every room this isolate currently holds in memory
+  if (path === '/rooms' && method === 'GET') {
+    return json(registry.list());
   }
 
-  // GET /api/room/:id
-  const roomMatch = path.match(/^\/room\/([a-z0-9-]+)$/);
+  // GET /api/room/:serverId/:modeId/:instanceId
+  const roomMatch = path.match(/^\/room\/([a-z0-9-]+)\/([a-z_]+)\/?([a-z0-9_-]*)$/i);
   if (roomMatch && method === 'GET') {
-    const id   = roomMatch[1];
-    const room = registry.get(id);
+    const [, serverId, modeId, instanceId] = roomMatch;
+    const roomKey = `${serverId}:${modeId}:${instanceId || 'main'}`;
+    const room = registry.get(roomKey);
     if (!room) {
-      // Also try KV
-      const count = await kvGet(env.KV_ROOMS, `room:${id}:count`);
-      return json({ id, players: parseInt(count || '0', 10), score: { red: 0, blue: 0 } });
+      const count = await kvGet(env.ROOMS, `room:${roomKey}:count`);
+      return json({ id: roomKey, players: parseInt(count || '0', 10), score: null, exists: false });
     }
-    return json(room.summary());
+    return json({ ...room.summary(), exists: true });
   }
 
   // GET /api/leaderboard?limit=50
@@ -80,12 +79,36 @@ export async function handleAPI(request, env, ctx, registry, url) {
       kills:       Math.min(9999, Math.max(0, parseInt(body.kills, 10) || 0)),
       deaths:      Math.min(9999, Math.max(0, parseInt(body.deaths, 10) || 0)),
       playtime:    Math.min(86400, Math.max(0, parseInt(body.playtime_sec, 10) || 0)),
-      kd:          body.deaths > 0 ? (body.kills / body.deaths).toFixed(2) : body.kills.toFixed(2),
+      kd:          body.deaths > 0 ? (body.kills / body.deaths).toFixed(2) : Number(body.kills || 0).toFixed(2),
       ts:          Date.now(),
     };
 
     ctx.waitUntil(upsertLeaderboard(env, entry));
     return json({ ok: true });
+  }
+
+  // POST /api/training/create  { ownerName }
+  // Registers a personal training room on THIS worker and returns the
+  // connect info. The room itself is created lazily on first WS connect;
+  // this just reserves the slot in the cross-isolate KV registry so the
+  // control-plane (and other isolates checking capacity) can see it.
+  if (path === '/training/create' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const ownerName = String(body.ownerName || 'Player').replace(/[<>&"']/g, '').slice(0, 20);
+    const instanceId = `${ownerName.toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
+    const ttlSec = 3600;
+
+    ctx.waitUntil(registerTrainingRoom(env, instanceId, ownerName, ttlSec));
+
+    return json({
+      ok: true,
+      serverId:   env.SERVER_ID || 'unknown',
+      modeId:     'training',
+      instanceId,
+      ttlSec,
+      wsPath:     `/ws/${env.SERVER_ID || 'unknown'}/training/${instanceId}?owner=${encodeURIComponent(ownerName)}&instance=${instanceId}`,
+    });
   }
 
   return json({ error: 'Not found' }, 404);
@@ -98,37 +121,35 @@ async function kvGet(kv, key) {
   try { return await kv.get(key); } catch { return null; }
 }
 
-async function fetchRoomCounts(env, ids) {
-  const counts = {};
-  if (!env.KV_ROOMS) return counts;
-  await Promise.all(ids.map(async id => {
-    try {
-      const v = await env.KV_ROOMS.get(`room:${id}:count`);
-      counts[id] = parseInt(v || '0', 10);
-    } catch { counts[id] = 0; }
-  }));
-  return counts;
-}
-
 async function fetchLeaderboard(env, limit) {
-  if (!env.KV_LEADERBOARD) return [];
+  if (!env.LEADERBOARD) return [];
   try {
-    const raw = await env.KV_LEADERBOARD.get('global:top', { type: 'json' });
+    const raw = await env.LEADERBOARD.get('global:top', { type: 'json' });
     if (!Array.isArray(raw)) return [];
     return raw.slice(0, limit);
   } catch { return []; }
 }
 
 async function upsertLeaderboard(env, entry) {
-  if (!env.KV_LEADERBOARD) return;
+  if (!env.LEADERBOARD) return;
   try {
-    const existing = (await env.KV_LEADERBOARD.get('global:top', { type: 'json' })) || [];
-    // Merge — keep best kills per name
+    const existing = (await env.LEADERBOARD.get('global:top', { type: 'json' })) || [];
     const map = new Map(existing.map(e => [e.name, e]));
     const prev = map.get(entry.name);
     if (!prev || entry.kills > prev.kills) map.set(entry.name, entry);
     const sorted = [...map.values()].sort((a, b) => b.kills - a.kills).slice(0, 100);
-    await env.KV_LEADERBOARD.put('global:top', JSON.stringify(sorted), { expirationTtl: 604800 });
+    await env.LEADERBOARD.put('global:top', JSON.stringify(sorted), { expirationTtl: 604800 });
+  } catch (_) {}
+}
+
+async function registerTrainingRoom(env, instanceId, ownerName, ttlSec) {
+  if (!env.ROOMS) return;
+  try {
+    await env.ROOMS.put(
+      `training:${env.SERVER_ID || 'unknown'}:${instanceId}`,
+      JSON.stringify({ ownerName, createdAt: Date.now(), serverId: env.SERVER_ID }),
+      { expirationTtl: ttlSec + 60 },
+    );
   } catch (_) {}
 }
 
