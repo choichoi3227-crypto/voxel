@@ -1,15 +1,20 @@
 // src/workers/router.js
 // ─────────────────────────────────────────────────────────────
-// VOXEL STRIKE — Master Router Worker
+// VOXEL STRIKE — Per-server-instance Game Worker
 // Routes: static assets / REST API / WebSocket upgrade
-// No Durable Objects — rooms live in isolate memory + KV sync
+// No Durable Objects, no external services — rooms live in isolate
+// memory, with best-effort KV sync for cross-isolate visibility.
+//
+// One deployment of this worker == one "server" in the server list.
+// The control-plane worker (src/workers/control-plane.js) is the one
+// that decides WHEN to deploy new copies of this script under new
+// names/subdomains; this file itself has no idea how many siblings
+// exist.
 // ─────────────────────────────────────────────────────────────
 import { handleWebSocket } from './ws-handler.js';
 import { handleAPI }       from './api.js';
 import { RoomRegistry }    from './room-registry.js';
-
-// Module-level singleton registry (lives for the lifetime of this isolate)
-export const registry = new RoomRegistry();
+import { GAME_MODE_IDS }   from './constants.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin':  '*',
@@ -18,22 +23,58 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age':       '86400',
 };
 
+// ── Lazy singleton ──────────────────────────────────────────────
+// NEVER instantiate RoomRegistry at module scope. It is created on the
+// first request this isolate handles, inside the fetch handler below.
+// RoomRegistry's constructor has zero side effects (no timers, no I/O),
+// so even this lazy creation is safe regardless of when it happens.
+let _registry = null;
+function getRegistry() {
+  if (!_registry) _registry = new RoomRegistry();
+  return _registry;
+}
+
+/** Build the in-memory room key for a (serverId, modeId, instanceId) tuple. */
+function roomKeyFor(serverId, modeId, instanceId) {
+  return `${serverId}:${modeId}:${instanceId || 'main'}`;
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const registry = getRegistry();
     const url = new URL(request.url);
+    const now = Date.now();
+
+    // Opportunistic maintenance — cheap, throttled internally, runs inside
+    // a real request so it never violates the global-scope rule.
+    registry.maybeCleanup(now);
+    if (registry.maybeSnapshotDue(now)) {
+      ctx.waitUntil(snapshotToKV(env, registry));
+    }
 
     // ── CORS preflight ──────────────────────────────────────
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // ── WebSocket upgrade  /ws/:serverId ────────────────────
+    // ── WebSocket upgrade  /ws/:serverId/:modeId?/:instanceId? ──
     if (url.pathname.startsWith('/ws/')) {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return new Response('WebSocket required', { status: 426 });
       }
-      const serverId = url.pathname.slice(4).split('/')[0] || env.SERVER_ID || 'asia-1';
-      return handleWebSocket(request, env, ctx, registry, serverId);
+      const parts = url.pathname.slice(4).split('/').filter(Boolean);
+      const serverId   = parts[0] || env.SERVER_ID || 'asia-1';
+      let   modeId      = parts[1] || 'multiplayer';
+      const instanceId = parts[2] || null;
+
+      if (!GAME_MODE_IDS.includes(modeId)) modeId = 'multiplayer';
+
+      // Custom room config can be passed via query string for user-created
+      // (training) servers: ?owner=NAME&ttl=3600&max=1
+      const customConfig = parseCustomConfig(url.searchParams, modeId);
+
+      const roomKey = roomKeyFor(serverId, modeId, instanceId || (customConfig?.instanceId ?? null));
+      return handleWebSocket(request, env, ctx, registry, roomKey, modeId, customConfig);
     }
 
     // ── REST API  /api/* ────────────────────────────────────
@@ -45,7 +86,6 @@ export default {
     }
 
     // ── Static assets ───────────────────────────────────────
-    // Cloudflare Workers Sites serves ./public via env.ASSETS
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
@@ -53,3 +93,27 @@ export default {
     return new Response('Not Found', { status: 404 });
   },
 };
+
+function parseCustomConfig(params, modeId) {
+  if (modeId !== 'training') return null;
+  const owner = params.get('owner');
+  if (!owner) return null;
+  return {
+    ownerName:  String(owner).slice(0, 20),
+    instanceId: params.get('instance') || owner.slice(0, 12),
+    maxPlayers: 1,
+    ttlSec:     3600,
+  };
+}
+
+async function snapshotToKV(env, registry) {
+  try {
+    if (!env.ROOMS) return;
+    const meta = registry.snapshotMeta();
+    await env.ROOMS.put(
+      `isolate:rooms:${env.SERVER_ID || 'unknown'}`,
+      JSON.stringify({ ts: Date.now(), rooms: meta, totalPlayers: registry.totalPlayers() }),
+      { expirationTtl: 120 },
+    );
+  } catch (_) {}
+}
