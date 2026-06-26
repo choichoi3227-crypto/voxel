@@ -1,0 +1,23 @@
+{
+  "name": "voxel-strike",
+  "version": "1.0.0",
+  "description": "Browser FPS game — Cloudflare Workers + KV, no Durable Objects",
+  "private": true,
+  "scripts": {
+    "dev":        "wrangler dev --port 8787 --local",
+    "deploy":     "wrangler deploy",
+    "deploy:asia-1":   "wrangler deploy --config config/wrangler.asia-1.toml",
+    "deploy:asia-2":   "wrangler deploy --config config/wrangler.asia-2.toml",
+    "deploy:asia-3":   "wrangler deploy --config config/wrangler.asia-3.toml",
+    "deploy:eu-1":     "wrangler deploy --config config/wrangler.eu-1.toml",
+    "deploy:us-west":  "wrangler deploy --config config/wrangler.us-west.toml",
+    "deploy:us-east":  "wrangler deploy --config config/wrangler.us-east.toml",
+    "deploy:all":      "npm run deploy:asia-1 && npm run deploy:asia-2 && npm run deploy:asia-3 && npm run deploy:eu-1 && npm run deploy:us-west && npm run deploy:us-east",
+    "kv:create":       "node scripts/create-kv.js",
+    "build":           "node scripts/build.js",
+    "lint":            "echo 'no linter configured'"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
