@@ -2,26 +2,39 @@
 // ─────────────────────────────────────────────────────────────
 // WebSocket upgrade + message dispatch for one player session.
 // One handler instance per connected client.
+//
+// All gameplay-affecting numbers reported by the client (damage, hit
+// distance, penetration count) are re-validated server-side via
+// ballistics.js before being applied — the client is only trusted for
+// "this aim direction at this time", never for "this much damage".
 // ─────────────────────────────────────────────────────────────
 import { MAX_PLAYERS } from './room-registry.js';
-import { WEAPON_DAMAGE } from './constants.js';
+import { WEAPON_DAMAGE, WEAPON_BALLISTICS } from './constants.js';
+import { clampReportedDamage } from './ballistics.js';
 
 const RESPAWN_DELAY_MS = 4000;
 const MOVE_THROTTLE_MS = 50;   // ignore duplicate moves faster than 50ms
 const MAX_MSG_LEN      = 512;
 
-export function handleWebSocket(request, env, ctx, registry, serverId) {
+export function handleWebSocket(request, env, ctx, registry, roomKey, modeId, customConfig) {
   const { 0: client, 1: server } = new WebSocketPair();
-  server.accept();
 
-  const room     = registry.getOrCreate(serverId);
+  // Hibernatable API where available (paid/standard Workers runtime) —
+  // falls back silently to a normal accept() on runtimes without it.
+  if (typeof server.accept === 'function') server.accept();
+
+  const room     = registry.getOrCreate(roomKey, { modeId, customConfig });
   const playerId = uid();
   let   joined   = false;
   let   lastMove = 0;
-  let   pingTs   = 0;
+
+  room.touch();
 
   // ── Message handler ────────────────────────────────────────
   server.addEventListener('message', evt => {
+    const now = Date.now();
+    room.touch(now);
+
     // Sanity check size
     if (typeof evt.data !== 'string' || evt.data.length > MAX_MSG_LEN) return;
 
@@ -51,20 +64,21 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
         }
         joined = true;
 
-        // Welcome packet: full room state
         server.send(JSON.stringify({
           type:     'welcome',
           playerId: player.id,
           name:     player.name,
           team:     player.team,
+          modeId:   room.modeId,
           spawn:    { x: player.x, y: player.y, z: player.z },
-          score:    room.score,
+          score:    room.mode.teams ? room.score : null,
           roundEnd: room.roundEnd,
+          zone:     room.zone ? { cx: room.zone.cx, cz: room.zone.cz, radius: room.zone.radius } : null,
           players:  room.playersSnapshot(playerId),
-          serverId,
+          ttlRemaining: room.ttlRemainingSec(now),
+          roomKey,
         }));
 
-        // Notify others
         room.broadcast({
           type:   'player_join',
           player: {
@@ -74,14 +88,12 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
           },
         }, playerId);
 
-        // Persist player count to KV (best-effort, fire-and-forget)
-        ctx.waitUntil(syncRoomCountToKV(env, serverId, room.players.size));
+        ctx.waitUntil(syncRoomCountToKV(env, roomKey, room.players.size));
         break;
       }
 
       // ── MOVE ───────────────────────────────────────────────
       case 'move': {
-        const now = Date.now();
         if (now - lastMove < MOVE_THROTTLE_MS) return;
         lastMove = now;
 
@@ -91,15 +103,24 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
         const yaw   = +msg.yaw   || 0;
         const pitch = clamp(+msg.pitch, -1.5, 1.5);
 
+        const wasAlive = room.getPlayer(playerId)?.alive;
         room.movePlayer(playerId, x, y, z, yaw, pitch);
         room.broadcast({ type: 'move', id: playerId, x, y, z, yaw, pitch }, playerId);
+
+        // Zone damage may have just killed this player (battle royale)
+        const p = room.getPlayer(playerId);
+        if (p && wasAlive && !p.alive) {
+          room.sendTo(playerId, { type: 'damage', fromId: null, fromName: '안전구역', damage: 0, health: 0, armor: 0 });
+          room._checkBattleRoyaleWin?.();
+          scheduleRespawnOrEnd(ctx, room, playerId);
+        }
         break;
       }
 
       // ── SHOOT ──────────────────────────────────────────────
       case 'shoot': {
         const player = room.getPlayer(playerId);
-        if (!player || player.health <= 0) return;
+        if (!player || !player.alive) return;
 
         const weaponId = validateWeapon(msg.weapon) ? msg.weapon : player.weapon;
         player.weapon = weaponId;
@@ -121,20 +142,31 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
       // ── HIT (client-side hit detection → server validates) ─
       case 'hit': {
         const shooter = room.getPlayer(playerId);
-        if (!shooter || shooter.health <= 0) return;
+        if (!shooter || !shooter.alive) return;
 
         const victimId = msg.victimId;
         if (typeof victimId !== 'string') return;
+        const victim = room.getPlayer(victimId);
+        if (!victim) return;
 
         const weapon = validateWeapon(msg.weapon) ? msg.weapon : shooter.weapon;
-        const maxDmg = WEAPON_DAMAGE[weapon] || 30;
-        // Clamp to max weapon damage ± 5 to allow spread/headshot bonus
-        const damage = clamp(Math.floor(+msg.damage || maxDmg), 1, maxDmg + 5);
+        const distance = Math.hypot(
+          (+msg.x || shooter.x) - victim.x,
+          (+msg.y || shooter.y) - victim.y,
+          (+msg.z || shooter.z) - victim.z,
+        ) || Math.hypot(shooter.x - victim.x, shooter.y - victim.y, shooter.z - victim.z);
 
-        const result = room.applyHit(playerId, victimId, damage);
+        const penetrationsClaimed = clamp(parseInt(msg.penetrations, 10) || 0, 0, 4);
+        const isHeadshot = !!msg.headshot;
+
+        // Server recomputes the ceiling for this shot — client's number is
+        // clamped, never trusted outright.
+        const validatedDamage = clampReportedDamage(weapon, msg.damage, distance, { penetrationsClaimed, isHeadshot });
+        if (validatedDamage <= 0) return; // out of range / over-penetrated / non-positive — drop silently
+
+        const result = room.applyHit(playerId, victimId, validatedDamage);
         if (!result.victim) return;
 
-        // Always tell victim their new health
         room.sendTo(victimId, {
           type:   'damage',
           fromId: playerId,
@@ -144,40 +176,23 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
           armor:  result.victim.armor,
         });
 
-        // Broadcast hit marker to shooter
-        room.sendTo(playerId, { type: 'hit_confirm', victimId, damage: result.damage, killed: result.killed });
+        room.sendTo(playerId, { type: 'hit_confirm', victimId, damage: result.damage, killed: result.killed, headshot: isHeadshot });
 
         if (result.killed) {
-          // Announce kill to room
           room.broadcast({
             type:       'kill',
             killerId:   playerId,
             killerName: shooter.name,
             victimId,
             victimName: result.victim.name,
-            score:      { ...room.score },
+            weapon,
+            headshot:   isHeadshot,
+            score:      room.mode.teams ? { ...room.score } : null,
           });
 
-          // Schedule respawn
-          const delay = RESPAWN_DELAY_MS + Math.floor(Math.random() * 1000);
-          ctx.waitUntil(
-            sleep(delay).then(() => {
-              const revived = room.respawnPlayer(victimId);
-              if (revived) {
-                room.sendTo(victimId, {
-                  type:  'respawn',
-                  spawn: { x: revived.x, y: revived.y, z: revived.z },
-                  health: revived.health,
-                  armor:  revived.armor,
-                  score:  { ...room.score },
-                });
-                room.broadcast({ type: 'player_respawn', id: victimId, x: revived.x, y: revived.y, z: revived.z }, victimId);
-              }
-            })
-          );
-
-          // Persist score (fire and forget)
-          ctx.waitUntil(syncRoomCountToKV(env, serverId, room.players.size));
+          room._checkBattleRoyaleWin?.();
+          scheduleRespawnOrEnd(ctx, room, victimId);
+          ctx.waitUntil(syncRoomCountToKV(env, roomKey, room.players.size));
         }
         break;
       }
@@ -198,14 +213,14 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
         const text = String(msg.text || '').replace(/[<>]/g, '').slice(0, 120);
         if (!text) return;
 
-        const isTeam = !!msg.team_only;
+        const isTeam = !!msg.team_only && room.mode.teams;
         const chatMsg = {
           type: 'chat',
           from: p.name,
           team: p.team,
           text,
           teamOnly: isTeam,
-          ts: Date.now(),
+          ts: now,
         };
 
         if (isTeam) room.broadcastTeam(p.team, chatMsg);
@@ -215,10 +230,10 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
 
       // ── PING ───────────────────────────────────────────────
       case 'ping': {
-        pingTs = +msg.t || Date.now();
-        server.send(JSON.stringify({ type: 'pong', t: pingTs, serverTime: Date.now() }));
+        const pingTs = +msg.t || now;
+        server.send(JSON.stringify({ type: 'pong', t: pingTs, serverTime: now }));
         const p = room.getPlayer(playerId);
-        if (p) p.ping = Date.now() - pingTs;
+        if (p) p.ping = now - pingTs;
         break;
       }
 
@@ -241,7 +256,7 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
     if (!joined) return;
     room.removePlayer(playerId);
     room.broadcast({ type: 'player_leave', id: playerId });
-    ctx.waitUntil(syncRoomCountToKV(env, serverId, room.players.size));
+    ctx.waitUntil(syncRoomCountToKV(env, roomKey, room.players.size));
   });
 
   server.addEventListener('error', () => {
@@ -252,6 +267,26 @@ export function handleWebSocket(request, env, ctx, registry, serverId) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────
+
+function scheduleRespawnOrEnd(ctx, room, victimId) {
+  if (!room.mode.respawns) return; // battle royale: no respawn, player stays eliminated
+  const delay = RESPAWN_DELAY_MS + Math.floor(Math.random() * 1000);
+  ctx.waitUntil(
+    sleep(delay).then(() => {
+      const revived = room.respawnPlayer(victimId);
+      if (revived) {
+        room.sendTo(victimId, {
+          type:  'respawn',
+          spawn: { x: revived.x, y: revived.y, z: revived.z },
+          health: revived.health,
+          armor:  revived.armor,
+          score:  room.mode.teams ? { ...room.score } : null,
+        });
+        room.broadcast({ type: 'player_respawn', id: victimId, x: revived.x, y: revived.y, z: revived.z }, victimId);
+      }
+    })
+  );
+}
 
 function uid() {
   return Math.random().toString(36).slice(2, 10) +
@@ -267,14 +302,14 @@ function sleep(ms) {
 }
 
 function validateWeapon(w) {
-  return ['ak47','m4a1','awp','mp5','shotgun','deagle'].includes(w);
+  return Object.prototype.hasOwnProperty.call(WEAPON_BALLISTICS, w);
 }
 
-async function syncRoomCountToKV(env, serverId, count) {
+async function syncRoomCountToKV(env, roomKey, count) {
   try {
-    if (!env.KV_ROOMS) return;
-    await env.KV_ROOMS.put(
-      `room:${serverId}:count`,
+    if (!env.ROOMS) return;
+    await env.ROOMS.put(
+      `room:${roomKey}:count`,
       String(count),
       { expirationTtl: 300 }   // auto-expire if worker dies
     );
