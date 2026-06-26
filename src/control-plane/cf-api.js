@@ -18,15 +18,19 @@ function authHeaders(env) {
 }
 
 /**
- * Upload (create or update) a Worker script as a single-module ES Worker,
- * with the given KV namespace bindings and plaintext vars. `scriptBody` is
- * the full bundled JS source (string) — same bundling approach as the
- * existing scripts/build.js, just targeting the Worker entry point
- * instead of the client bundle.
+ * Upload (create or update) a Worker script as a multi-module ES Worker,
+ * with the given KV namespace bindings and plaintext vars.
+ *
+ * `moduleParts` is a plain object { "router.js": "...", "api.js": "...", ... }
+ * mirroring the exact file tree of src/workers/ — Cloudflare's module
+ * upload API accepts multiple JS modules per script and resolves the
+ * relative imports between them (`./api.js`, `./constants.js`, etc.)
+ * exactly as they're written in source, so no bundling/flattening is
+ * needed. `mainModule` names which part is the entry point.
  */
-export async function deployWorkerScript(env, { scriptName, scriptBody, kvBindings = [], vars = {}, compatibilityDate = '2024-09-23' }) {
+export async function deployWorkerScript(env, { scriptName, moduleParts, mainModule = 'router.js', kvBindings = [], vars = {}, compatibilityDate = '2024-09-23' }) {
   const metadata = {
-    main_module: 'router.js',
+    main_module: mainModule,
     compatibility_date: compatibilityDate,
     compatibility_flags: ['nodejs_compat'],
     bindings: [
@@ -37,7 +41,9 @@ export async function deployWorkerScript(env, { scriptName, scriptBody, kvBindin
 
   const form = new FormData();
   form.append('metadata', JSON.stringify(metadata));
-  form.append('router.js', new Blob([scriptBody], { type: 'application/javascript+module' }), 'router.js');
+  for (const [filename, body] of Object.entries(moduleParts)) {
+    form.append(filename, new Blob([body], { type: 'application/javascript+module' }), filename);
+  }
 
   const res = await fetch(`${CF_BASE}/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${scriptName}`, {
     method: 'PUT',
