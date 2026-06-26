@@ -8,19 +8,19 @@ bucket = "./public"
 
 # ── KV namespaces ────────────────────────────────────────────
 [[kv_namespaces]]
-binding = "KV_LEADERBOARD"
-id      = "REPLACE_KV_LEADERBOARD_ID"
-preview_id = "REPLACE_KV_LEADERBOARD_PREVIEW_ID"
+binding = "LEADERBOARD"
+id      = "4c171c9c5515419c8d93c4b86c3b4154"
+preview_id = "51334660d0e642269b53b51d2dd4e10f"
 
 [[kv_namespaces]]
-binding = "KV_SESSIONS"
-id      = "REPLACE_KV_SESSIONS_ID"
-preview_id = "REPLACE_KV_SESSIONS_PREVIEW_ID"
+binding = "SESSIONS"
+id      = "19e5e273e99941fbb963300e56dbdf9e"
+preview_id = "cd6625820745452ab9debf42fb0c836a"
 
 [[kv_namespaces]]
-binding = "KV_ROOMS"
-id      = "REPLACE_KV_ROOMS_ID"
-preview_id = "REPLACE_KV_ROOMS_PREVIEW_ID"
+binding = "ROOMS"
+id      = "a68a11044ba2442596bfd5484195277e"
+preview_id = "5e2f90cfcbd547639a16a6c608de9789"
 
 [vars]
 GAME_VERSION         = "1.0.0"
