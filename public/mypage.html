@@ -1,1 +1,75 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VOXEL My Page</title><style>body{background:#09111a;color:#eee;font-family:system-ui;padding:24px}.card{border:1px solid #355;background:#111b26;border-radius:12px;padding:16px;margin:10px 0}button,input{padding:10px;border-radius:8px;background:#0d1520;color:#fff;border:1px solid #456}</style><h1>마이페이지</h1><nav><a href="/">게임</a> · <a href="/servers.html">서버</a> · <a href="/shop.html">상점</a></nav><div class="card"><input id="name" placeholder="닉네임"><button onclick="register()">회원 생성(D1)</button><button onclick="me()">내 정보</button><button onclick="reward()">테스트 보상 지급</button></div><pre id="out"></pre><script>let uid=localStorage.vs_uid||'';async function register(){const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name.value||'Player'})});const j=await r.json();uid=j.userId;localStorage.vs_uid=uid;out.textContent=JSON.stringify(j,null,2)}async function me(){const r=await fetch('/api/users/me?userId='+encodeURIComponent(uid));out.textContent=JSON.stringify(await r.json(),null,2)}async function reward(){const r=await fetch('/api/rewards/grant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,kills:3,win:true,playMinutes:10})});out.textContent=JSON.stringify(await r.json(),null,2)}</script></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL My Page</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#09111a; color:#eee; font-family:system-ui,sans-serif; }
+    header, main { width:min(980px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #355; border-radius:999px; padding:8px 12px; background:#111b26; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+    .card { border:1px solid #355; background:#111b26; border-radius:14px; padding:16px; margin:10px 0; }
+    button,input { padding:10px; border-radius:8px; background:#0d1520; color:#fff; border:1px solid #456; }
+    button { background:#c62828; border:none; font-weight:800; }
+    pre { white-space:pre-wrap; background:#06101b; border-radius:12px; padding:12px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>마이페이지</h1>
+    <p>계정, 지갑, 인벤토리, 보상 상태를 확인합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/servers.html">서버</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/loadouts.html">로드아웃</a>
+      <a class="pill" href="/shop.html">상점</a>
+      <a class="pill" href="/clans.html">클랜</a>
+    </nav>
+  </header>
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>회원 생성</h2>
+        <input id="name" placeholder="닉네임">
+        <button id="registerBtn">회원 생성</button>
+      </section>
+      <section class="card">
+        <h2>프로필</h2>
+        <button id="meBtn">내 정보</button>
+        <button id="inventoryBtn">인벤토리</button>
+      </section>
+      <section class="card">
+        <h2>테스트 보상</h2>
+        <button id="rewardBtn">킬/승리 보상 지급</button>
+      </section>
+    </div>
+    <pre id="out">대기 중...</pre>
+  </main>
+  <script>
+    let uid = localStorage.vs_uid || '';
+    async function show(response) { out.textContent = JSON.stringify(await response.json(), null, 2); }
+    registerBtn.addEventListener('click', async () => {
+      const res = await fetch('/api/users/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: name.value || 'Player' }),
+      });
+      const data = await res.json();
+      uid = data.userId;
+      localStorage.vs_uid = uid;
+      out.textContent = JSON.stringify(data, null, 2);
+    });
+    meBtn.addEventListener('click', () => show(fetch('/api/users/me?userId=' + encodeURIComponent(uid))));
+    inventoryBtn.addEventListener('click', () => show(fetch('/api/users/' + encodeURIComponent(uid) + '/inventory')));
+    rewardBtn.addEventListener('click', () => show(fetch('/api/rewards/grant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: uid, kills: 3, win: true, playMinutes: 10 }),
+    })));
+  </script>
+</body>
+</html>

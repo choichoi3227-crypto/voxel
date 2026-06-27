@@ -47,6 +47,36 @@ const SHOP_CATALOG = {
   ],
 };
 
+const GAME_MODES = [
+  { id: 'battle_royale', name: 'Battle Royale', squadSize: 1, maxPlayers: 100, hasPlaneDrop: true, hasSafeZone: true },
+  { id: 'solo', name: 'Solo Royale', squadSize: 1, maxPlayers: 100, hasPlaneDrop: true, hasSafeZone: true },
+  { id: 'duo', name: 'Duo Royale', squadSize: 2, maxPlayers: 100, hasPlaneDrop: true, hasSafeZone: true },
+  { id: 'squad', name: 'Squad Royale', squadSize: 4, maxPlayers: 100, hasPlaneDrop: true, hasSafeZone: true },
+  { id: 'multiplayer', name: 'Team Deathmatch', squadSize: 5, maxPlayers: 20, hasPlaneDrop: false, hasSafeZone: false },
+  { id: 'training', name: 'Training Island', squadSize: 1, maxPlayers: 1, hasPlaneDrop: false, hasSafeZone: false },
+];
+
+const MAP_CATALOG = [
+  { id: 'voxel_royale_island', name: 'Voxel Royale Island', size: '192x192', terrain: 'mixed', lootTier: 'high', vehicles: ['buggy', 'jeep'] },
+  { id: 'desert_strike', name: 'Desert Strike', size: '192x192', terrain: 'desert', lootTier: 'medium', vehicles: ['buggy', 'pickup'] },
+  { id: 'jungle_rush', name: 'Jungle Rush', size: '128x128', terrain: 'jungle', lootTier: 'medium', vehicles: ['bike', 'buggy'] },
+  { id: 'training_island', name: 'Training Island', size: '64x64', terrain: 'range', lootTier: 'sandbox', vehicles: ['buggy'] },
+];
+
+const DEFAULT_LOADOUTS = [
+  { id: 'assault', name: 'Assault', primary: 'ak47', secondary: 'deagle', throwables: ['frag'], armor: 1 },
+  { id: 'marksman', name: 'Marksman', primary: 'kar98', secondary: 'mp5', throwables: ['smoke'], armor: 1 },
+  { id: 'support', name: 'Support', primary: 'm249', secondary: 'deagle', throwables: ['flash'], armor: 2 },
+  { id: 'balanced', name: 'Balanced', primary: 'm4a1', secondary: 'ump45', throwables: ['frag', 'smoke'], armor: 1 },
+];
+
+const DEFAULT_MISSIONS = [
+  { id: 'first_drop', title: '첫 강하', goal: '낙하산으로 1회 착지', reward: { tokens: 100 } },
+  { id: 'top10', title: '상위 10위', goal: '배틀로얄 상위 10위 달성', reward: { tokens: 250 } },
+  { id: 'vehicle_run', title: '로드 트립', goal: '차량으로 500m 이동', reward: { tokens: 150 } },
+  { id: 'chicken', title: '치킨 디너', goal: '1회 승리', reward: { tokens: 500, gems: 10 } },
+];
+
 const REWARD_RULES = {
   kill: 10,
   assist: 4,
@@ -65,6 +95,48 @@ export async function handleAPI(request, env, ctx, registry, url) {
     const rooms = registry.list();
     const totalPlayers = registry.totalPlayers();
     return json([{ id: env.SERVER_ID || 'asia-1', name: env.SERVER_NAME || env.SERVER_ID || 'Asia #1', region: env.SERVER_REGION || 'Seoul', flag: env.SERVER_FLAG || '🇰🇷', kind: env.SERVER_KIND || 'region', status: 'active', players: totalPlayers, maxPlayers: Math.max(parseInt(env.MAX_PLAYERS_PER_ROOM || '20', 10), rooms.reduce((n, r) => Math.max(n, r.maxPlayers || 20), 20)), endpoint: null }]);
+  }
+
+  // GET /api/bootstrap — one-call startup payload for web/mobile clients.
+  if (path === '/bootstrap' && method === 'GET') {
+    const rooms = registry.list();
+    return json({
+      ok: true,
+      version: env.GAME_VERSION || '1.0.0',
+      modes: GAME_MODES,
+      maps: MAP_CATALOG,
+      loadouts: DEFAULT_LOADOUTS,
+      missions: DEFAULT_MISSIONS,
+      shop: SHOP_CATALOG,
+      physics: physicsConfig(),
+      install: installManifest(url),
+      server: {
+        id: env.SERVER_ID || 'edge',
+        name: env.SERVER_NAME || env.SERVER_ID || 'Voxel Edge',
+        region: env.SERVER_REGION || 'global',
+        players: registry.totalPlayers(),
+        rooms,
+      },
+    });
+  }
+
+  if (path === '/modes' && method === 'GET') return json({ ok: true, modes: GAME_MODES });
+  if (path === '/maps' && method === 'GET') return json({ ok: true, maps: MAP_CATALOG });
+  if (path === '/loadouts' && method === 'GET') return json({ ok: true, loadouts: DEFAULT_LOADOUTS });
+  if (path === '/missions' && method === 'GET') return json({ ok: true, missions: DEFAULT_MISSIONS });
+  if (path === '/install' && method === 'GET') return json({ ok: true, install: installManifest(url) });
+  if (path === '/unity/config' && method === 'GET') {
+    return json({
+      ok: true,
+      note: 'Unity WebGL-compatible launch/config endpoint. The current client remains a lightweight browser renderer until Unity build artifacts are uploaded.',
+      streamingAssetsUrl: `${url.origin}/unity/StreamingAssets`,
+      dataUrl: `${url.origin}/unity/Build/voxel.data`,
+      frameworkUrl: `${url.origin}/unity/Build/voxel.framework.js`,
+      codeUrl: `${url.origin}/unity/Build/voxel.wasm`,
+      companyName: 'Voxel Strike',
+      productName: 'Voxel Strike Royale',
+      productVersion: env.GAME_VERSION || '1.0.0',
+    });
   }
 
 
@@ -120,6 +192,21 @@ export async function handleAPI(request, env, ctx, registry, url) {
 
   if (path === '/admin/events' && method === 'GET') {
     return json(await listKVJson(env.SERVER_KV || env.ROOMS, 'event:'));
+  }
+
+  if (path === '/admin/events' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const event = {
+      id: sanitizeText(body.id || `event-${Date.now().toString(36)}`, 64),
+      title: sanitizeText(body.title || 'Limited Event', 80),
+      startsAt: clampInt(body.startsAt, 0, Number.MAX_SAFE_INTEGER, Date.now()),
+      endsAt: clampInt(body.endsAt, 0, Number.MAX_SAFE_INTEGER, Date.now() + 86400000),
+      reward: body.reward || { tokens: 100 },
+      updatedAt: Date.now(),
+    };
+    await putKVJson(env.SERVER_KV || env.ROOMS, `event:${event.id}`, event, 0);
+    return json({ ok: true, event });
   }
 
   if (path === '/admin/settings' && method === 'POST') {
@@ -197,6 +284,58 @@ export async function handleAPI(request, env, ctx, registry, url) {
     const wallet = await getWallet(env, userId);
     const inventory = await getInventory(env, userId);
     return json({ ok: true, profile, wallet, inventory });
+  }
+
+  if (path === '/users/login' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const username = sanitizeText(body.username || body.name || 'Player', 32);
+    const emailHash = sanitizeText(body.emailHash || '', 128);
+    await ensureUsersTable(env);
+    let profile = null;
+    if (env.USERS_DB && emailHash) {
+      profile = await env.USERS_DB.prepare('SELECT id, username, email_hash, created_at, last_seen_at FROM users WHERE email_hash = ?').bind(emailHash).first().catch(() => null);
+    }
+    if (!profile) {
+      const userId = `u_${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`;
+      profile = { id: userId, username, email_hash: emailHash, created_at: Date.now(), last_seen_at: Date.now() };
+      if (env.USERS_DB) await env.USERS_DB.prepare('INSERT INTO users (id, username, email_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)').bind(profile.id, username, emailHash, profile.created_at, profile.last_seen_at).run().catch(() => {});
+    }
+    await putKVJson(env.SERVER_KV || env.ROOMS, `session:${profile.id}`, { userId: profile.id, ts: Date.now() }, 86400);
+    return json({ ok: true, userId: profile.id, username: profile.username || username, profile });
+  }
+
+  const inventoryMatch = path.match(/^\/users\/([^/]+)\/inventory$/);
+  if (inventoryMatch && method === 'GET') {
+    const userId = sanitizeText(inventoryMatch[1], 80);
+    return json({ ok: true, inventory: await getInventory(env, userId), wallet: await getWallet(env, userId) });
+  }
+
+  if (path === '/clans' && method === 'GET') {
+    return json({ ok: true, clans: await listKVJson(env.SERVER_KV || env.ROOMS, 'clan:') });
+  }
+
+  if (path === '/clans' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const clan = {
+      id: `clan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: sanitizeText(body.name || 'New Clan', 32),
+      ownerId: sanitizeText(body.ownerId || 'guest', 80),
+      tag: sanitizeText(body.tag || 'VS', 6).toUpperCase(),
+      members: [sanitizeText(body.ownerId || 'guest', 80)],
+      createdAt: Date.now(),
+    };
+    await putKVJson(env.SERVER_KV || env.ROOMS, `clan:${clan.id}`, clan, 0);
+    return json({ ok: true, clan });
+  }
+
+  if (path === '/telemetry' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const event = { id: `telemetry:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`, ts: Date.now(), type: sanitizeText(body.type || 'client', 40), payload: body.payload || {} };
+    await putKVJson(env.SERVER_KV || env.ROOMS, event.id, event, 604800);
+    return json({ ok: true });
   }
 
   // GET /api/shop/catalog — item, token and PayPal gem-pack catalog.
@@ -427,6 +566,22 @@ function physicsConfig() {
     lagCompensation: { interpolationMs: 100, maxRewindMs: 250 },
     ballistics: { projectileTravel: true, bulletDrop: true, penetration: true, distanceFalloff: true, armorAbsorption: 0.5 },
     movement: { jumpVelocity: 8.5, sprintMultiplier: 1.65, crouchMultiplier: 0.5, airControl: 0.35, stepHeight: 0.45 },
+  };
+}
+
+function installManifest(url) {
+  return {
+    type: 'pwa',
+    manifestUrl: `${url.origin}/manifest.webmanifest`,
+    serviceWorkerUrl: `${url.origin}/sw.js`,
+    startUrl: `${url.origin}/`,
+    display: 'fullscreen',
+    instructions: {
+      chromeAndroid: '주소창 또는 브라우저 메뉴에서 “앱 설치”를 선택하세요.',
+      safariIOS: '공유 버튼 → 홈 화면에 추가를 선택하세요.',
+      desktop: '주소창의 설치 아이콘 또는 앱 설치 버튼을 누르세요.',
+    },
+    nativeWrapper: null,
   };
 }
 

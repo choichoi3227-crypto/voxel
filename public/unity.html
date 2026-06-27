@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unity WebGL Config</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#071019; color:#e8f1ff; font-family:system-ui,sans-serif; }
+    header, main { width:min(900px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #29425c; border-radius:999px; padding:8px 12px; background:#101b28; }
+    .card { background:#101b28; border:1px solid #29425c; border-radius:16px; padding:18px; margin:12px 0; }
+    pre { white-space:pre-wrap; background:#06101b; border-radius:12px; padding:12px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Unity WebGL 준비</h1>
+    <p>Unity WebGL 빌드 산출물을 연결하기 위한 설정 정보를 제공합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/install.html">설치</a>
+      <a class="pill" href="/admin.html">어드민</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Unity 런처 안내</h2>
+      <p>현재 런타임은 즉시 플레이 가능한 경량 브라우저 렌더러입니다. Unity WebGL 빌드 산출물(.data/.wasm/.framework.js)을 업로드하면 아래 설정 URL로 같은 백엔드/API를 사용할 수 있습니다.</p>
+    </section>
+    <section class="card">
+      <h2>설정</h2>
+      <pre id="out">로딩 중...</pre>
+    </section>
+  </main>
+  <script>
+    fetch('/api/unity/config').then(res => res.json()).then(data => {
+      out.textContent = JSON.stringify(data, null, 2);
+    });
+  </script>
+</body>
+</html>

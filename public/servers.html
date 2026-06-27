@@ -1,1 +1,73 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VOXEL Servers</title><style>body{background:#080c10;color:#eee;font-family:system-ui;padding:24px}.card{border:1px solid #733;background:#121820;border-radius:12px;padding:14px;margin:10px 0}button,input{padding:10px;border-radius:8px;margin:4px;background:#161d28;color:#fff;border:1px solid #555}</style><h1>서버</h1><nav><a href="/">게임</a> · <a href="/shop.html">상점</a> · <a href="/mypage.html">마이페이지</a> · <a href="/admin.html">어드민</a></nav><section class="card"><h2>서버 제작</h2><input id="owner" placeholder="닉네임"><button onclick="createServer()">64인 배틀로얄 서버 제작</button></section><section id="list"></section><script>async function refresh(){const r=await fetch('/api/servers');const a=await r.json();list.innerHTML=a.map(s=>`<div class=card><b>${s.flag||''} ${s.name||s.id}</b><br>${s.region||''}<br>${s.players||0}/${s.maxPlayers||20}<br><button onclick='play(${JSON.stringify(s)})'>접속</button>${s.kind==='custom'?`<button onclick="del('${s.id}')">삭제</button>`:''}</div>`).join('')}async function createServer(){const r=await fetch('/api/servers/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerName:owner.value||'Player',maxPlayers:64,ttlSec:7200})});alert(JSON.stringify(await r.json(),null,2));refresh()}async function del(id){await fetch('/api/servers/'+id,{method:'DELETE'});refresh()}function play(s){location.href='/?server='+encodeURIComponent(s.id)}refresh()</script></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Servers</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#080c10; color:#eee; font-family:system-ui,sans-serif; }
+    header, main { width:min(1100px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #733; border-radius:999px; padding:8px 12px; background:#121820; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    .card { border:1px solid #733; background:#121820; border-radius:14px; padding:14px; margin:10px 0; }
+    button,input,select { padding:10px; border-radius:8px; margin:4px; background:#161d28; color:#fff; border:1px solid #555; }
+    button { background:#c62828; border:none; font-weight:800; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>서버</h1>
+    <p>공개 서버에 접속하거나 개인 배틀로얄 서버를 만듭니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/loadouts.html">로드아웃</a>
+      <a class="pill" href="/shop.html">상점</a>
+      <a class="pill" href="/mypage.html">마이페이지</a>
+      <a class="pill" href="/admin.html">어드민</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>서버 제작</h2>
+      <input id="owner" placeholder="닉네임">
+      <select id="mode"><option value="battle_royale">Battle Royale</option><option value="solo">Solo</option><option value="squad">Squad</option><option value="training">Training</option></select>
+      <button id="createBtn">서버 제작</button>
+      <button id="refreshBtn">새로고침</button>
+    </section>
+    <section id="list" class="grid"></section>
+  </main>
+  <script>
+    async function refresh() {
+      const res = await fetch('/api/servers');
+      const servers = await res.json();
+      list.innerHTML = servers.map(server => `
+        <article class="card">
+          <h2>${server.flag || ''} ${server.name || server.id}</h2>
+          <p>${server.region || ''}</p>
+          <p>${server.players || 0}/${server.maxPlayers || 20}명</p>
+          <button onclick='play(${JSON.stringify(server)})'>접속</button>
+          ${server.kind === 'custom' ? `<button onclick="del('${server.id}')">삭제</button>` : ''}
+        </article>
+      `).join('');
+    }
+    async function createServer() {
+      const res = await fetch('/api/servers/custom', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownerName: owner.value || 'Player', modeId: mode.value, maxPlayers: 100, ttlSec: 7200 }),
+      });
+      alert(JSON.stringify(await res.json(), null, 2));
+      refresh();
+    }
+    async function del(id) { await fetch('/api/servers/' + id, { method: 'DELETE' }); refresh(); }
+    function play(server) { location.href = '/?server=' + encodeURIComponent(server.id); }
+    createBtn.addEventListener('click', createServer);
+    refreshBtn.addEventListener('click', refresh);
+    refresh();
+  </script>
+</body>
+</html>

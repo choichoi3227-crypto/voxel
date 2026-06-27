@@ -1,1 +1,85 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VOXEL Shop</title><style>body{background:#0b0b12;color:#eee;font-family:system-ui;padding:24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{border:1px solid #553;background:#181520;border-radius:12px;padding:14px}button,input{padding:10px;border-radius:8px;background:#22172a;color:#fff;border:1px solid #765}</style><h1>상점</h1><nav><a href="/">게임</a> · <a href="/mypage.html">마이페이지</a> · <a href="/servers.html">서버</a></nav><p>플레이/킬/승리로 토큰을 얻고, PayPal 젬 구매로 프리미엄 스킨을 구매합니다.</p><input id="uid" placeholder="userId"><button onclick="catalog()">카탈로그</button><div id="items" class="grid"></div><pre id="out"></pre><script>uid.value=localStorage.vs_uid||'';async function catalog(){const r=await fetch('/api/shop/catalog');const j=await r.json();items.innerHTML=j.catalog.items.map(i=>`<div class=card><b>${i.name}</b><br>${i.type}<br>가격: ${JSON.stringify(i.price)}<br><button onclick="buy('${i.id}')">구매</button></div>`).join('')+j.catalog.paypalGemPacks.map(p=>`<div class=card><b>${p.gems} 젬</b><br>$${p.priceUsd}<br><button onclick="paypal('${p.id}')">PayPal 주문</button></div>`).join('');out.textContent=JSON.stringify(j.rewardRules,null,2)}async function buy(itemId){const r=await fetch('/api/shop/purchase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid.value,itemId})});out.textContent=JSON.stringify(await r.json(),null,2)}async function paypal(packId){const r=await fetch('/api/payments/paypal/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid.value,packId})});out.textContent=JSON.stringify(await r.json(),null,2)}catalog()</script></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Shop</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#0b0b12; color:#eee; font-family:system-ui,sans-serif; }
+    header, main { width:min(1120px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #553; border-radius:999px; padding:8px 12px; background:#181520; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    .card { border:1px solid #553; background:#181520; border-radius:14px; padding:14px; }
+    button,input { padding:10px; border-radius:8px; background:#22172a; color:#fff; border:1px solid #765; }
+    button { background:#c62828; border:none; font-weight:800; }
+    pre { white-space:pre-wrap; background:#080810; border-radius:12px; padding:12px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>상점</h1>
+    <p>플레이/킬/승리로 토큰을 얻고, 프리미엄 스킨은 젬으로 구매합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/mypage.html">마이페이지</a>
+      <a class="pill" href="/servers.html">서버</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/loadouts.html">로드아웃</a>
+      <a class="pill" href="/events.html">이벤트</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card" style="margin-bottom:14px">
+      <label>userId <input id="uid" placeholder="userId"></label>
+      <button id="catalogBtn">카탈로그 새로고침</button>
+    </section>
+    <div id="items" class="grid"></div>
+    <h2>응답</h2>
+    <pre id="out">대기 중...</pre>
+  </main>
+  <script>
+    uid.value = localStorage.vs_uid || '';
+    async function catalog() {
+      const res = await fetch('/api/shop/catalog');
+      const data = await res.json();
+      const itemCards = data.catalog.items.map(item => `
+        <section class="card">
+          <h2>${item.name}</h2>
+          <p>${item.type}</p>
+          <p>가격: ${JSON.stringify(item.price)}</p>
+          <button onclick="buy('${item.id}')">구매</button>
+        </section>
+      `).join('');
+      const packCards = data.catalog.paypalGemPacks.map(pack => `
+        <section class="card">
+          <h2>${pack.gems} 젬</h2>
+          <p>$${pack.priceUsd}</p>
+          <button onclick="paypal('${pack.id}')">PayPal 주문</button>
+        </section>
+      `).join('');
+      items.innerHTML = itemCards + packCards;
+      out.textContent = JSON.stringify(data.rewardRules, null, 2);
+    }
+    async function buy(itemId) {
+      const res = await fetch('/api/shop/purchase', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid.value, itemId }),
+      });
+      out.textContent = JSON.stringify(await res.json(), null, 2);
+    }
+    async function paypal(packId) {
+      const res = await fetch('/api/payments/paypal/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid.value, packId }),
+      });
+      out.textContent = JSON.stringify(await res.json(), null, 2);
+    }
+    catalogBtn.addEventListener('click', catalog);
+    catalog();
+  </script>
+</body>
+</html>

@@ -52,6 +52,11 @@ export class Game {
     this.pitch       = 0;
     this.keys        = {};
     this.mouseDown   = false;
+    this.cameraMode  = 'first';
+    this.inLobby     = true;
+    this.parachuting = false;
+    this.vehicle     = null;
+    this.selectedMode = 'battle_royale';
 
     // Weapon inventory
     this.weaponStates  = {};
@@ -83,6 +88,7 @@ export class Game {
     this._setupNet();
     this._setupInput();
     this._setupMenu();
+    this._setupMobileControls();
   }
 
   // ── Boot ────────────────────────────────────────────────────
@@ -102,6 +108,7 @@ export class Game {
   // ── Game start / stop ────────────────────────────────────────
 
   _startGame(server) {
+    this.selectedMode = server.modeId || 'battle_royale';
     this.myName  = this.menu.playerName;
     this.myTeam  = Math.random() < 0.5 ? 'red' : 'blue';
     this.kills   = 0;
@@ -112,18 +119,22 @@ export class Game {
     this.bullets.length = 0;
     this.particles.length = 0;
 
-    // Place player at spawn
-    const sp = this.map.spawnPoints.find(s => s.team === this.myTeam) || { x:8, y:1, z:8 };
+    // PUBG-style lobby/airdrop opening instead of spawning on the ground.
+    const drops = this.map.dropPoints || [];
+    const sp = (this.selectedMode.includes('battle') || this.selectedMode === 'solo' || this.selectedMode === 'squad')
+      ? (drops[Math.floor(Math.random()*drops.length)] || { x:64, y:14, z:64 })
+      : (this.map.spawnPoints.find(s => s.team === this.myTeam) || { x:8, y:1, z:8 });
+    this.inLobby = true; this.parachuting = sp.y > 3;
     this.phys.pos    = { x: sp.x + (Math.random()-.5)*2, y: sp.y, z: sp.z + (Math.random()-.5)*2 };
     this.phys.vel    = { x:0, y:0, z:0 };
     this.phys.health = 100;
     this.phys.alive  = true;
 
-    // Reset weapon
-    this._equip('ak47');
+    // Reset weapon/loadout
+    this._equip(this.menu.settings.weapon || 'ak47');
 
     // Bots
-    this.bots.spawn(9);
+    this.bots.spawn(this.selectedMode === 'training' ? 6 : 23);
 
     this.menu.hideMenu();
     this.hud.show();
@@ -139,7 +150,8 @@ export class Game {
 
     // Network
     this.net.connect(server.id, this.myName, server.wsPath || null, server.modeId || 'multiplayer');
-    this.hud.notify(`${server.flag||''} ${server.name} 접속!`, '#44ff88');
+    this.hud.notify(`${server.flag||''} ${server.name} 접속! · 3초 로비 후 강하`, '#44ff88');
+    setTimeout(() => { this.inLobby = false; this.hud.notify(this.parachuting ? '🪂 낙하산 강하! WASD로 착지 지점 조정' : 'MATCH START', '#ffdd44'); }, 3000);
   }
 
   _returnToMenu() {
@@ -183,7 +195,14 @@ export class Game {
     if (this.mouseDown && WEAPONS[this.currentWeapon].auto) this._shoot();
 
     // Physics
-    this.phys.update(dt, this.keys, this.yaw);
+    if (this.parachuting) {
+      this.keys['ShiftLeft'] = false;
+      this.phys.vel.y = Math.max(this.phys.vel.y, -3.2);
+      this.hud.notify('🪂 PARACHUTE', '#ffdd44');
+      if (this.phys.pos.y <= this.map.floorY(this.phys.pos.x, this.phys.pos.z) + 0.15) this.parachuting = false;
+    }
+    if (this.vehicle) this._updateVehicle(dt);
+    else this.phys.update(dt, this.keys, this.yaw);
 
     // Bots
     this.bots.update(dt,
@@ -273,6 +292,7 @@ export class Game {
       eyeY:        this.phys.eyeY,
       yaw:         this.yaw,
       pitch:       this.pitch,
+      cameraMode:  this.cameraMode,
       map:         this.map,
       entities:    allEntities,
       bullets:     this.bullets,
@@ -453,6 +473,8 @@ export class Game {
         }
       }
 
+      if (e.code === 'KeyV') this.cameraMode = this.cameraMode === 'first' ? 'third' : 'first';
+      if (e.code === 'KeyE') this._toggleVehicle();
       if (e.code === 'KeyR') {
         const wep = this.weaponStates[this.currentWeapon];
         if (!wep.reloading) wep.startReload();
@@ -525,6 +547,33 @@ export class Game {
     window.addEventListener('resize', () => {
       this.renderer.resize(window.innerWidth, window.innerHeight);
     });
+  }
+
+  _toggleVehicle() {
+    if (this.vehicle) { this.vehicle = null; this.hud.notify('차량에서 내림', '#ddd'); return; }
+    const near = (this.map.vehicleSpawns || []).find(v => Math.hypot(v.x-this.phys.pos.x, v.z-this.phys.pos.z) < 4);
+    if (near) { this.vehicle = { ...near, speed: 0 }; this.hud.notify(`🚙 ${near.type.toUpperCase()} 탑승`, '#44ff88'); }
+    else this.hud.notify('근처에 탈 것이 없습니다', '#ffaa44');
+  }
+
+  _updateVehicle(dt) {
+    const accel = (this.keys['KeyW']?1:0) - (this.keys['KeyS']?1:0);
+    this.vehicle.speed = Math.max(-8, Math.min(18, this.vehicle.speed + accel * 18 * dt));
+    this.vehicle.speed *= Math.pow(0.85, dt*8);
+    this.phys.pos.x += Math.sin(this.yaw) * this.vehicle.speed * dt;
+    this.phys.pos.z += Math.cos(this.yaw) * this.vehicle.speed * dt;
+    this.phys.pos.y = this.map.floorY(this.phys.pos.x, this.phys.pos.z);
+  }
+
+  _setupMobileControls() {
+    const style = document.createElement('style');
+    style.textContent = `#mobile-controls{display:none}@media (pointer:coarse),(max-width:820px){#mobile-controls{display:block;position:fixed;inset:0;z-index:30;pointer-events:none}.mc-pad{position:absolute;bottom:22px;left:18px;display:grid;grid-template-columns:repeat(3,54px);gap:8px;pointer-events:auto}.mc-pad button,.mc-actions button{width:54px;height:54px;border-radius:16px;border:1px solid #ffffff33;background:#0b1220cc;color:#fff;font-weight:800}.mc-actions{position:absolute;right:18px;bottom:22px;display:grid;grid-template-columns:repeat(2,58px);gap:10px;pointer-events:auto}.mc-fire{background:#ff3333dd!important}.mc-look{position:absolute;right:0;top:0;width:58%;height:70%;pointer-events:auto}}`;
+    document.head.appendChild(style);
+    document.body.insertAdjacentHTML('beforeend', `<div id="mobile-controls"><div class="mc-look"></div><div class="mc-pad"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><button data-k="Space">⤴</button><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div><div class="mc-actions"><button class="mc-fire">발사</button><button data-act="reload">R</button><button data-act="scope">ADS</button><button data-act="vehicle">E</button><button data-act="cam">시점</button><button data-act="weapon">무기</button></div></div>`);
+    document.querySelectorAll('#mobile-controls [data-k]').forEach(b => { const k=b.dataset.k; b.addEventListener('touchstart',e=>{e.preventDefault();this.keys[k]=true}); b.addEventListener('touchend',e=>{e.preventDefault();delete this.keys[k]}); });
+    document.querySelector('.mc-fire')?.addEventListener('touchstart', e=>{e.preventDefault();this.mouseDown=true;this._shoot();}); document.querySelector('.mc-fire')?.addEventListener('touchend', e=>{e.preventDefault();this.mouseDown=false;});
+    document.querySelector('[data-act=reload]')?.addEventListener('click',()=>this.weaponStates[this.currentWeapon].startReload()); document.querySelector('[data-act=scope]')?.addEventListener('click',()=>this.scopedIn=!this.scopedIn); document.querySelector('[data-act=vehicle]')?.addEventListener('click',()=>this._toggleVehicle()); document.querySelector('[data-act=cam]')?.addEventListener('click',()=>this.cameraMode=this.cameraMode==='first'?'third':'first'); document.querySelector('[data-act=weapon]')?.addEventListener('click',()=>{const keys=Object.keys(WEAPONS);this._equip(keys[(keys.indexOf(this.currentWeapon)+1)%keys.length]);});
+    let lx=0,ly=0; const look=document.querySelector('.mc-look'); look?.addEventListener('touchstart',e=>{lx=e.touches[0].clientX;ly=e.touches[0].clientY}); look?.addEventListener('touchmove',e=>{const t=e.touches[0];this.yaw+=(t.clientX-lx)*0.006;this.pitch=Math.max(-1.3,Math.min(1.3,this.pitch-(t.clientY-ly)*0.006));lx=t.clientX;ly=t.clientY;e.preventDefault();});
   }
 
   // ── Chat ────────────────────────────────────────────────────

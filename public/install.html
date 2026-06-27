@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Install</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#071019; color:#e8f1ff; font-family:system-ui,sans-serif; }
+    header, main { width:min(900px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #29425c; border-radius:999px; padding:8px 12px; background:#101b28; }
+    .card { background:#101b28; border:1px solid #29425c; border-radius:16px; padding:18px; margin:12px 0; }
+    button { padding:12px 16px; border:0; border-radius:10px; background:#c62828; color:white; font-weight:800; }
+    pre { white-space:pre-wrap; background:#06101b; border-radius:12px; padding:12px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>웹앱 설치</h1>
+    <p>txt 다운로드가 아니라 PWA 설치 흐름으로 실행합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/servers.html">서버</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/unity.html">Unity 설정</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>PWA 설치</h2>
+      <p>브라우저가 지원하면 아래 버튼으로 설치 프롬프트를 열고, iOS는 공유 버튼 → 홈 화면에 추가를 사용하세요.</p>
+      <button id="install">앱 설치</button>
+    </section>
+    <section class="card">
+      <h2>설치 메타데이터</h2>
+      <pre id="out">로딩 중...</pre>
+    </section>
+  </main>
+  <script>
+    let promptEvent;
+    addEventListener('beforeinstallprompt', event => {
+      event.preventDefault();
+      promptEvent = event;
+    });
+    install.addEventListener('click', async () => {
+      if (promptEvent) await promptEvent.prompt();
+      else alert('브라우저 메뉴에서 홈 화면에 추가/앱 설치를 선택하세요.');
+    });
+    fetch('/api/install').then(res => res.json()).then(data => {
+      out.textContent = JSON.stringify(data.install, null, 2);
+    });
+  </script>
+</body>
+</html>

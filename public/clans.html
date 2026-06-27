@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Clans</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#09111a; color:#eee; font-family:system-ui,sans-serif; }
+    header, main { width:min(980px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #355; border-radius:999px; padding:8px 12px; background:#111b26; }
+    .card { border:1px solid #355; background:#111b26; border-radius:14px; padding:16px; margin:12px 0; }
+    input,button { padding:11px 12px; border-radius:8px; background:#0d1520; color:#fff; border:1px solid #456; }
+    button { background:#c62828; border:none; font-weight:800; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>클랜</h1>
+    <p>친구와 클랜을 만들고 스쿼드 플레이를 준비합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/mypage.html">마이페이지</a>
+      <a class="pill" href="/servers.html">서버</a>
+      <a class="pill" href="/events.html">이벤트</a>
+    </nav>
+  </header>
+  <main>
+    <section class="card">
+      <h2>클랜 생성</h2>
+      <input id="name" placeholder="클랜 이름">
+      <input id="tag" placeholder="태그" maxlength="6">
+      <button id="create">클랜 생성</button>
+    </section>
+    <section>
+      <h2>클랜 목록</h2>
+      <div id="list" class="grid"></div>
+    </section>
+  </main>
+  <script>
+    async function refresh() {
+      const res = await fetch('/api/clans');
+      const data = await res.json();
+      list.innerHTML = (data.clans || []).map(clan => `
+        <article class="card">
+          <h3>[${clan.tag}] ${clan.name}</h3>
+          <p>Owner: ${clan.ownerId}</p>
+          <p>Members: ${(clan.members || []).length}</p>
+        </article>
+      `).join('') || '<p>아직 클랜이 없습니다.</p>';
+    }
+    create.addEventListener('click', async () => {
+      const ownerId = localStorage.vs_uid || 'guest';
+      await fetch('/api/clans', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.value, tag: tag.value, ownerId }),
+      });
+      name.value = '';
+      tag.value = '';
+      refresh();
+    });
+    refresh();
+  </script>
+</body>
+</html>

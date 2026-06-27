@@ -42,7 +42,7 @@ export const WEAPON_DAMAGE = Object.fromEntries(
 export const WEAPON_IDS = Object.keys(WEAPON_BALLISTICS);
 
 export const MAP = {
-  W: 64, H: 8, D: 64,
+  W: 192, H: 24, D: 192,
 };
 
 export const TEAMS = ['red', 'blue'];
@@ -68,7 +68,45 @@ export const GAME_MODES = {
     id: 'battle_royale',
     label: '배틀로얄',
     teams: false,
-    maxPlayers: 64,
+    maxPlayers: 100,
+    roundDurationSec: 1200,
+    botsAllowed: true,
+    respawns: false,
+    shrinkingZone: true,
+    zoneShrinkIntervalSec: 45,
+    zoneMinRadius: 6,
+  },
+  solo: {
+    id: 'solo',
+    label: '솔로 배틀로얄',
+    teams: false,
+    maxPlayers: 100,
+    roundDurationSec: 1200,
+    botsAllowed: true,
+    respawns: false,
+    shrinkingZone: true,
+    zoneShrinkIntervalSec: 45,
+    zoneMinRadius: 6,
+  },
+  duo: {
+    id: 'duo',
+    label: '듀오 배틀로얄',
+    teams: true,
+    squadSize: 2,
+    maxPlayers: 100,
+    roundDurationSec: 1200,
+    botsAllowed: true,
+    respawns: false,
+    shrinkingZone: true,
+    zoneShrinkIntervalSec: 45,
+    zoneMinRadius: 6,
+  },
+  squad: {
+    id: 'squad',
+    label: '스쿼드 배틀로얄',
+    teams: true,
+    squadSize: 4,
+    maxPlayers: 100,
     roundDurationSec: 1200,
     botsAllowed: true,
     respawns: false,

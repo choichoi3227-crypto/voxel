@@ -10,8 +10,8 @@
 // ─────────────────────────────────────────────────────────────
 import { BLOCK_COLOR, BLOCK } from './map.js';
 
-const FOG_START  = 18;
-const FOG_END    = 55;
+const FOG_START  = 60;
+const FOG_END    = 150;
 const SKY_TOP    = [10, 20, 40];
 const SKY_BOT    = [26, 38, 72];
 const FLOOR_COL  = [22, 20, 18];
@@ -41,7 +41,11 @@ export class Renderer {
   }
 
   render(state) {
-    const { pos, eyeY, yaw, pitch, map, entities, bullets, particles, weapon, scopedIn, damageAlpha, flashAlpha } = state;
+    let { pos, eyeY, yaw, pitch, map, entities, bullets, particles, weapon, scopedIn, damageAlpha, flashAlpha } = state;
+    if (state.cameraMode === 'third') {
+      pos = { x: pos.x - Math.sin(yaw) * 4.2, y: pos.y + 1.4, z: pos.z - Math.cos(yaw) * 4.2 };
+      eyeY = pos.y + 1.2;
+    }
     const { w, h, buf, zbuf } = this;
 
     // Clear depth buffer
@@ -121,7 +125,7 @@ export class Renderer {
     let side = 0, dist = 0;
     let hit = false, hitType = 0, stepsMade = 0;
 
-    while (!hit && dist < FOG_END && stepsMade++ < 120) {
+    while (!hit && dist < FOG_END && stepsMade++ < 220) {
       if (sdX < sdZ) { sdX+=dX; mx+=stepX; side=0; dist=sdX-dX; }
       else            { sdZ+=dZ; mz+=stepZ; side=1; dist=sdZ-dZ; }
       for (let by = map.H-1; by >= 0; by--) {
