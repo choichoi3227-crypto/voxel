@@ -17,6 +17,12 @@ import { RoomRegistry }    from './room-registry.js';
 import { GAME_MODE_IDS }   from './constants.js';
 import { blockBadBots } from './bot-guard.js';
 
+// Workers Sites ([site] bucket 방식) 필수 import
+// wrangler 배포 시 __STATIC_CONTENT_MANIFEST 자동 주입.
+// 이 import가 없으면 Workers 런타임에서 즉시 예외 → Error 1101
+import ASSET_MANIFEST from '__STATIC_CONTENT_MANIFEST';
+import { getAssetFromKV, MethodNotAllowedError, NotFoundError } from '@cloudflare/kv-asset-handler';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
@@ -92,20 +98,46 @@ export default {
     }
 
     // ── Static assets ───────────────────────────────────────
-    // env.ASSETS  → Workers Assets (wrangler.toml [assets] 또는 Pages)
-    // env.__STATIC_CONTENT → Workers Sites ([site] bucket 방식)
-    const assets = env.ASSETS || env.__STATIC_CONTENT || null;
+    // Workers Sites ([site] bucket) 방식: getAssetFromKV 사용
+    // env.ASSETS (Workers Assets/Pages) 방식도 함께 지원
+    if (request.method === 'GET') {
+      // 1) Workers Assets 바인딩 (Pages / [assets] 방식)
+      if (env.ASSETS) {
+        try {
+          const assetResp = await env.ASSETS.fetch(request);
+          if (assetResp.status !== 404) return assetResp;
+        } catch (_) {}
+        // SPA fallback
+        try {
+          return await env.ASSETS.fetch(new Request(new URL('/index.html', url.origin), request));
+        } catch (_) {}
+      }
 
-    if (assets) {
-      const assetResp = await assets.fetch(request);
-      if (assetResp.status !== 404 || request.method !== 'GET') return assetResp;
-      // SPA/page fallback: 알 수 없는 경로는 game shell(index.html)로 fallback
-      const indexUrl = new URL('/index.html', url.origin);
-      return assets.fetch(new Request(indexUrl, request));
+      // 2) Workers Sites ([site] bucket) 방식: getAssetFromKV
+      if (env.__STATIC_CONTENT) {
+        try {
+          return await getAssetFromKV(
+            { request, waitUntil: ctx.waitUntil.bind(ctx) },
+            {
+              ASSET_NAMESPACE: env.__STATIC_CONTENT,
+              ASSET_MANIFEST,
+            },
+          );
+        } catch (e) {
+          if (e instanceof NotFoundError || e instanceof MethodNotAllowedError) {
+            // SPA fallback: 알 수 없는 경로 → index.html 서빙
+            try {
+              const indexReq = new Request(new URL('/index.html', url.origin), request);
+              return await getAssetFromKV(
+                { request: indexReq, waitUntil: ctx.waitUntil.bind(ctx) },
+                { ASSET_NAMESPACE: env.__STATIC_CONTENT, ASSET_MANIFEST },
+              );
+            } catch (_) {}
+          }
+        }
+      }
     }
 
-    // Workers Sites 환경에서 __STATIC_CONTENT_MANIFEST가 있지만
-    // 아직 getAssetFromKV를 쓰지 않는 경우를 대비한 마지막 fallback
     return new Response('Not Found', { status: 404 });
   },
 };
