@@ -20,6 +20,8 @@ const MODES = [
     badge: 'HOT',
     color: '#ff9900',
   },
+  { id: 'solo', icon:'🪂', label:'솔로 배틀로얄', desc:'비행기 드랍 · 낙하산 · 자기장 · 봇/플레이어 혼합', badge:'PUBG', color:'#ffcc33' },
+  { id: 'squad', icon:'👥', label:'스쿼드', desc:'4인 팀 생존 · 차량 이동 · 팀 부활 비콘', badge:'SQUAD', color:'#44ff88' },
   {
     id: 'training',
     icon: '🎯',
@@ -46,22 +48,22 @@ export class Menu {
 
   async loadWith(steps) {
     for (const { pct, text } of steps) {
-      if (this._el['load-bar'])  this._el['load-bar'].style.width  = pct + '%';
-      if (this._el['load-text']) this._el['load-text'].textContent = text;
+      if (this._el['vs-load-bar'])  this._el['vs-load-bar'].style.width  = pct + '%';
+      if (this._el['vs-load-text']) this._el['vs-load-text'].textContent = text;
       await sleep(240);
     }
     await sleep(280);
-    this._el['screen-loading'].style.display = 'none';
-    this._el['screen-menu'].style.display = 'flex';
+    this._el['vs-loading'].style.display = 'none';
+    this._el['vs-menu'].style.display = 'flex';
   }
 
-  hideMenu()       { if (this._el['screen-menu'])    this._el['screen-menu'].style.display    = 'none'; }
-  showMenu()       { if (this._el['screen-menu'])    this._el['screen-menu'].style.display    = 'flex'; }
-  showPointerMsg() { if (this._el['screen-pointer']) this._el['screen-pointer'].style.display = 'flex'; }
-  hidePointerMsg() { if (this._el['screen-pointer']) this._el['screen-pointer'].style.display = 'none'; }
+  hideMenu()       { if (this._el['vs-menu'])    this._el['vs-menu'].style.display    = 'none'; }
+  showMenu()       { if (this._el['vs-menu'])    this._el['vs-menu'].style.display    = 'flex'; }
+  showPointerMsg() { if (this._el['vs-pointer']) this._el['vs-pointer'].style.display = 'flex'; }
+  hidePointerMsg() { if (this._el['vs-pointer']) this._el['vs-pointer'].style.display = 'none'; }
 
   get playerName() {
-    const v = this._el['name-input']?.value?.trim();
+    const v = this._el['vs-name']?.value?.trim();
     return v || ('Player' + Math.floor(Math.random() * 9999));
   }
   get settings() { return this._settings; }
@@ -349,7 +351,8 @@ export class Menu {
       .vs-lb-empty { text-align: center; color: var(--vs-muted); padding: 28px; }
 
       /* ── Help text ── */
-      .vs-hint { font-size: 11px; color: #222; letter-spacing: 2px; text-align: center; }
+.vs-loadout{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}.vs-chip{border:1px solid var(--vs-border);background:#101722;color:#cbd5e1;border-radius:999px;padding:9px 14px;font-family:inherit;cursor:pointer}.vs-chip.active,.vs-chip:hover{border-color:#ff3333;color:#fff;background:#ff333322}
+      .vs-hint { font-size: 11px; color: #6b7280; letter-spacing: 2px; text-align: center; }
 
       /* ── Pointer lock ── */
       #vs-pointer {
@@ -419,6 +422,7 @@ export class Menu {
             <button class="vs-tab" data-tab="servers">🌐 서버</button>
             <button class="vs-tab" data-tab="settings">⚙ 설정</button>
             <button class="vs-tab" data-tab="leaderboard">🏆 랭킹</button>
+            <button class="vs-tab" data-tab="account">👤 가입/로그인</button>
           </div>
 
           <!-- PLAY panel -->
@@ -427,6 +431,10 @@ export class Menu {
             <div class="vs-play-row">
               <button class="vs-btn" id="vs-btn-play">▶ 지금 플레이</button>
               <button class="vs-btn sec" id="vs-btn-quickplay">⚡ 빠른 게임</button>
+              <button class="vs-btn sec" id="vs-btn-install">⬇ 앱 설치</button>
+            </div>
+            <div class="vs-loadout" id="vs-loadout">
+              <button class="vs-chip active" data-weapon="ak47">AK</button><button class="vs-chip" data-weapon="m4a1">M4</button><button class="vs-chip" data-weapon="kar98">Kar98</button><button class="vs-chip" data-weapon="m249">M249</button>
             </div>
           </div>
 
@@ -467,6 +475,16 @@ export class Menu {
             </div>
           </div>
 
+          <!-- ACCOUNT panel -->
+          <div class="vs-panel" id="vs-panel-account">
+            <div class="vs-settings">
+              <div class="vs-name-row"><div class="vs-name-label">이메일</div><input id="vs-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
+              <div class="vs-name-row"><div class="vs-name-label">비밀번호</div><input id="vs-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+              <div class="vs-play-row"><button class="vs-btn" id="vs-btn-login">로그인</button><button class="vs-btn sec" id="vs-btn-register">가입</button></div>
+              <div id="vs-auth-status" class="vs-hint">오프라인에서도 게스트 저장 후 서버 연결 시 동기화됩니다.</div>
+            </div>
+          </div>
+
           <!-- LEADERBOARD panel -->
           <div class="vs-panel" id="vs-panel-leaderboard">
             <table class="vs-lb-table">
@@ -499,9 +517,9 @@ export class Menu {
       'vs-name',
       'vs-modes','vs-server-grid',
       'vs-btn-play','vs-btn-quickplay','vs-btn-srv-play','vs-btn-create','vs-btn-refresh',
-      'vs-panel-play','vs-panel-servers','vs-panel-settings','vs-panel-leaderboard',
+      'vs-panel-play','vs-panel-servers','vs-panel-settings','vs-panel-leaderboard','vs-panel-account',
       'sl-sens','lbl-sens','sl-fov','lbl-fov','sl-res','lbl-res',
-      'cb-sound','cb-ads','vs-btn-save',
+      'cb-sound','cb-ads','vs-btn-save','vs-btn-install','vs-email','vs-pass','vs-btn-login','vs-btn-register','vs-auth-status',
       'vs-lb-body','vs-pointer',
     ];
     for (const id of ids) this._el[id] = document.getElementById(id);
@@ -601,13 +619,17 @@ export class Menu {
         const tab = btn.dataset.tab;
         document.querySelectorAll('.vs-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        const panels = { play:'vs-panel-play', servers:'vs-panel-servers', settings:'vs-panel-settings', leaderboard:'vs-panel-leaderboard' };
+        const panels = { play:'vs-panel-play', servers:'vs-panel-servers', settings:'vs-panel-settings', leaderboard:'vs-panel-leaderboard', account:'vs-panel-account' };
         document.querySelectorAll('.vs-panel').forEach(p => p.classList.remove('active'));
         document.getElementById(panels[tab])?.classList.add('active');
         if (tab === 'leaderboard') this._fetchLeaderboard();
         if (tab === 'servers') this._fetchServers();
       });
     });
+
+    document.querySelectorAll('.vs-chip').forEach(btn => btn.addEventListener('click', () => { document.querySelectorAll('.vs-chip').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); this._settings.weapon = btn.dataset.weapon; saveSettings(this._settings); }));
+    this._el['vs-btn-install']?.addEventListener('click', async () => { if (window.deferredInstallPrompt) { window.deferredInstallPrompt.prompt(); } else { alert('브라우저 메뉴의 “홈 화면에 추가/앱 설치”를 눌러 설치하세요.'); } });
+    for (const id of ['vs-btn-login','vs-btn-register']) this._el[id]?.addEventListener('click', () => this._auth(id.endsWith('register')));
 
     // Play button (mode panel)
     this._el['vs-btn-play']?.addEventListener('click', () => this._doPlay());
@@ -738,6 +760,22 @@ export class Menu {
     }
   }
 
+  async _auth(register=false) {
+    const username = this.playerName;
+    const email = this._el['vs-email']?.value || '';
+    const status = this._el['vs-auth-status'];
+    try {
+      const emailHash = await sha256(email.toLowerCase());
+      const res = await fetch('/api/users/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ username, emailHash }) });
+      const data = await res.json();
+      sessionStorage.setItem('vs_user', JSON.stringify(data));
+      if (status) status.textContent = `${register ? '가입' : '로그인'} 완료: ${data.username || username}`;
+    } catch (_) {
+      sessionStorage.setItem('vs_user', JSON.stringify({ username, offline:true }));
+      if (status) status.textContent = '오프라인 게스트로 저장됨. 서버가 켜지면 자동 동기화됩니다.';
+    }
+  }
+
   async _fetchLeaderboard() {
     try {
       const res  = await fetch('/api/leaderboard?limit=20');
@@ -793,3 +831,6 @@ async function estimatePing(serverId) {
   } catch { return 999; }
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function sha256(text){ const enc=new TextEncoder().encode(text||String(Math.random())); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+if (typeof window !== 'undefined') window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.deferredInstallPrompt = e; });

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Events</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#080c10; color:#eee; font-family:system-ui,sans-serif; }
+    header, main { width:min(1040px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #553; border-radius:999px; padding:8px 12px; background:#181520; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    .card { border:1px solid #553; background:#181520; border-radius:14px; padding:14px; }
+    button { padding:10px 14px; border-radius:8px; background:#c62828; color:#fff; border:0; font-weight:800; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>이벤트 / 미션</h1>
+    <p>기본 미션과 라이브 운영 이벤트를 확인합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/shop.html">상점</a>
+      <a class="pill" href="/admin.html">어드민</a>
+    </nav>
+  </header>
+  <main>
+    <button id="refresh">미션/이벤트 불러오기</button>
+    <h2>기본 미션</h2>
+    <div id="missions" class="grid"></div>
+    <h2>라이브 이벤트</h2>
+    <div id="events" class="grid"></div>
+  </main>
+  <script>
+    async function loadEvents() {
+      const missionData = await (await fetch('/api/missions')).json();
+      missions.innerHTML = missionData.missions.map(mission => `
+        <article class="card">
+          <h3>${mission.title}</h3>
+          <p>${mission.goal}</p>
+          <p>보상: ${JSON.stringify(mission.reward)}</p>
+        </article>
+      `).join('');
+      const eventData = await (await fetch('/api/admin/events')).json();
+      events.innerHTML = eventData.map(event => `
+        <article class="card">
+          <h3>${event.title}</h3>
+          <p>${new Date(event.startsAt).toLocaleString()} ~ ${new Date(event.endsAt).toLocaleString()}</p>
+          <p>보상: ${JSON.stringify(event.reward)}</p>
+        </article>
+      `).join('') || '<p>진행 중인 이벤트가 없습니다.</p>';
+    }
+    refresh.addEventListener('click', loadEvents);
+    loadEvents();
+  </script>
+</body>
+</html>

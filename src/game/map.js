@@ -20,7 +20,7 @@ export const BLOCK_COLOR = [
   { top:[130,130,135],sl:[115,115,120],sd:[100,100,105]}, // 7 CONCRETE
 ];
 
-export const W = 64, H = 10, D = 64;
+export const W = 192, H = 24, D = 192;
 
 export class GameMap {
   constructor() {
@@ -167,16 +167,58 @@ export class GameMap {
     this._box(24,3,38, 4,1,4, BLOCK.METAL);
     this._box(36,3,38, 4,1,4, BLOCK.METAL);
 
+    // ── Battle-royale scale landmarks: towns, docks, bridges, hills ──
+    for (let bx=70; bx<118; bx+=12) for (let bz=8; bz<52; bz+=14) {
+      this._box(bx,0,bz, 7,4,7, BLOCK.BRICK);
+      this._box(bx+1,1,bz+1, 5,3,5, BLOCK.AIR);
+      set(bx+3,1,bz,BLOCK.AIR); set(bx+3,2,bz,BLOCK.AIR);
+      this._box(bx,4,bz, 7,1,7, BLOCK.METAL);
+    }
+    this._box(74,0,78, 18,5,10, BLOCK.CONCRETE); this._box(76,1,80, 14,3,6, BLOCK.AIR);
+    this._box(98,0,78, 18,5,10, BLOCK.CONCRETE); this._box(100,1,80, 14,3,6, BLOCK.AIR);
+    for (let x=12;x<116;x+=8) this._box(x,0,62, 4,1,4, BLOCK.STONE);
+    this._box(56,1,58, 18,1,8, BLOCK.METAL);
+    this._box(10,0,92, 20,3,18, BLOCK.WOOD); this._box(12,1,94, 16,2,14, BLOCK.AIR);
+    this._box(34,0,92, 10,6,10, BLOCK.STONE); this._box(36,1,94, 6,5,6, BLOCK.AIR);
+    this._box(72,0,104, 42,2,8, BLOCK.CONCRETE);
+    for (let i=0;i<18;i++) { this._box(5+i*3,0,116-i, 2,1+i%3,2, BLOCK.STONE); }
+    // Vehicle pads (visual garages/ATV spawn markers)
+    this.vehicleSpawns = [
+      { x:18,y:1,z:18,type:'buggy' }, { x:86,y:1,z:18,type:'jeep' },
+      { x:110,y:1,z:82,type:'jeep' }, { x:24,y:1,z:106,type:'buggy' },
+    ];
+    for (const v of this.vehicleSpawns) { this._box(v.x-1,0,v.z-2, 3,1,5, BLOCK.METAL); }
+
+    // ── Spawn zones and lobby/plane drops ────────────────────
+    this.lobbySpawn = { x: W/2, y: 12, z: W/2 };
+    this.dropPoints = [
+      { x:18, y:14, z:18 }, { x:96, y:14, z:22 }, { x:112, y:14, z:86 }, { x:28, y:14, z:110 },
+      { x:64, y:14, z:64 }, { x:78, y:14, z:104 }, { x:42, y:14, z:52 }, { x:110, y:14, z:40 },
+    ];
+    this.lootSpawns = [];
+    for (let x=18; x<W-18; x+=16) for (let z=18; z<D-18; z+=16) {
+      const tier = (x>64 && x<128 && z>64 && z<128) ? 3 : (Math.random() > 0.55 ? 2 : 1);
+      this.lootSpawns.push({ x, y:this.floorY(x,z)+0.1, z, tier, items:['ammo','armor','medkit','weapon'] });
+    }
+    this.resourceZones = [
+      { id:'military_base', name:'Military Base', tier:3, x:82, z:86, radius:28 },
+      { id:'dockyard', name:'Dockyard', tier:2, x:24, z:102, radius:22 },
+      { id:'north_town', name:'North Town', tier:2, x:96, z:24, radius:30 },
+      { id:'quarry', name:'Quarry', tier:2, x:48, z:148, radius:24 },
+      { id:'bridge', name:'Bridge Control', tier:3, x:66, z:62, radius:18 },
+    ];
+    this.namedMaps = ['Voxel Royale Island', 'Desert Strike', 'Jungle Rush', 'Training Island'];
+
     // ── Spawn zones (floors already set) ────────────────────
     this.spawnPoints = [
       { x:4,  y:1, z:4,  team:'red'  },
       { x:6,  y:1, z:4,  team:'red'  },
       { x:5,  y:1, z:7,  team:'red'  },
       { x:7,  y:1, z:6,  team:'red'  },
-      { x:58, y:1, z:58, team:'blue' },
-      { x:56, y:1, z:58, team:'blue' },
-      { x:58, y:1, z:55, team:'blue' },
-      { x:56, y:1, z:56, team:'blue' },
+      { x:118, y:1, z:118, team:'blue' },
+      { x:116, y:1, z:118, team:'blue' },
+      { x:118, y:1, z:115, team:'blue' },
+      { x:116, y:1, z:116, team:'blue' },
     ];
   }
 

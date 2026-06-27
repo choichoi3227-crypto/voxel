@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Loadouts</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#080c10; color:#eee; font-family:system-ui,sans-serif; }
+    header, main { width:min(1120px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #733; border-radius:999px; padding:8px 12px; background:#121820; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    .card { border:1px solid #733; background:#121820; border-radius:16px; padding:16px; }
+    button { padding:10px 14px; border-radius:8px; background:#c62828; color:#fff; border:0; font-weight:800; }
+    .selected { outline:2px solid #ef4444; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>무기 선택 / 로드아웃</h1>
+    <p>선호 무기를 저장하면 메인 게임 시작 시 적용됩니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/shop.html">상점</a>
+      <a class="pill" href="/mypage.html">마이페이지</a>
+    </nav>
+  </header>
+  <main>
+    <div id="list" class="grid"></div>
+  </main>
+  <script>
+    async function loadLoadouts() {
+      const res = await fetch('/api/loadouts');
+      const data = await res.json();
+      list.innerHTML = data.loadouts.map(loadout => `
+        <section class="card" id="loadout-${loadout.id}">
+          <h2>${loadout.name}</h2>
+          <p>주무기: ${loadout.primary}</p>
+          <p>보조: ${loadout.secondary}</p>
+          <p>투척: ${loadout.throwables.join(', ')}</p>
+          <p>방어구 레벨: ${loadout.armor}</p>
+          <button onclick="selectLoadout('${loadout.id}', '${loadout.primary}')">선택</button>
+        </section>
+      `).join('');
+    }
+    function selectLoadout(id, weapon) {
+      const settings = JSON.parse(sessionStorage.vs_settings || '{}');
+      settings.weapon = weapon;
+      settings.loadout = id;
+      sessionStorage.vs_settings = JSON.stringify(settings);
+      document.querySelectorAll('.card').forEach(card => card.classList.remove('selected'));
+      document.getElementById(`loadout-${id}`)?.classList.add('selected');
+    }
+    loadLoadouts();
+  </script>
+</body>
+</html>

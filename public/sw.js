@@ -1,5 +1,5 @@
-const CACHE = 'voxel-strike-v2';
-const ASSETS = ['/', '/index.html', '/game.js', '/manifest.webmanifest'];
+const CACHE = 'voxel-strike-v3';
+const ASSETS = ['/', '/index.html', '/game.js', '/manifest.webmanifest', '/admin.html', '/shop.html', '/servers.html', '/mypage.html', '/maps.html', '/loadouts.html', '/clans.html', '/events.html', '/install.html', '/unity.html'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

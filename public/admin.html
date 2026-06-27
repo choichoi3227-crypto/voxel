@@ -1,1 +1,86 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VOXEL Admin</title><link rel="manifest" href="/manifest.webmanifest"><style>body{margin:0;background:#071019;color:#e8f1ff;font-family:system-ui;padding:24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.card{background:#101b28;border:1px solid #29425c;border-radius:14px;padding:16px}button,input{padding:10px;border-radius:8px;border:1px solid #446;background:#0a1220;color:#fff}button{background:#c62828;cursor:pointer}pre{white-space:pre-wrap;max-height:360px;overflow:auto}</style><h1>VOXEL Admin</h1><p>전체 서버 관리 · 치팅 관리 · 클랜 관리 · 사용자 관리 · 애드센스 · Cloudflare/GCP/KV 설정 · 이벤트</p><nav><a href="/">게임</a> · <a href="/servers.html">서버</a> · <a href="/shop.html">상점</a> · <a href="/mypage.html">마이페이지</a></nav><div class="grid"><section class="card"><h2>Overview</h2><button onclick="load('/api/admin/overview','overview')">불러오기</button><pre id="overview"></pre></section><section class="card"><h2>Cheats</h2><button onclick="load('/api/admin/cheats','cheats')">치팅 로그</button><pre id="cheats"></pre></section><section class="card"><h2>Clans</h2><button onclick="load('/api/admin/clans','clans')">클랜</button><pre id="clans"></pre></section><section class="card"><h2>Events</h2><button onclick="load('/api/admin/events','events')">이벤트</button><pre id="events"></pre></section></div><script>async function load(url,id){const r=await fetch(url);document.getElementById(id).textContent=JSON.stringify(await r.json(),null,2)}load('/api/admin/overview','overview')</script></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Admin</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    :root { color-scheme: dark; --bg:#071019; --panel:#101b28; --line:#29425c; --accent:#ef4444; --text:#e8f1ff; --muted:#8aa0b8; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:radial-gradient(circle at top,#142238,var(--bg) 55%); color:var(--text); font-family:Inter,system-ui,sans-serif; }
+    header, main { width:min(1180px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0 18px; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+    a { color:#9bd8ff; text-decoration:none; }
+    .pill { border:1px solid var(--line); border-radius:999px; padding:8px 12px; background:#0c1724; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; padding-bottom:28px; }
+    .card { background:rgba(16,27,40,.92); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow:0 18px 60px #0005; }
+    button,input { padding:11px 12px; border-radius:10px; border:1px solid #446; background:#0a1220; color:#fff; }
+    button { background:var(--accent); border:none; cursor:pointer; font-weight:800; }
+    pre { white-space:pre-wrap; max-height:360px; overflow:auto; color:#c7d2fe; background:#06101b; border-radius:12px; padding:12px; }
+    .muted { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VOXEL Admin</h1>
+    <p class="muted">전체 서버 관리 · 치팅 관리 · 클랜 관리 · 사용자 관리 · 설정 · 이벤트 콘솔</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/servers.html">서버</a>
+      <a class="pill" href="/maps.html">맵</a>
+      <a class="pill" href="/loadouts.html">로드아웃</a>
+      <a class="pill" href="/shop.html">상점</a>
+      <a class="pill" href="/clans.html">클랜</a>
+      <a class="pill" href="/events.html">이벤트</a>
+      <a class="pill" href="/install.html">설치</a>
+    </nav>
+  </header>
+  <main class="grid">
+    <section class="card">
+      <h2>Overview</h2>
+      <p class="muted">현재 워커/룸/서버 상태를 확인합니다.</p>
+      <button data-load="/api/admin/overview" data-target="overview">불러오기</button>
+      <pre id="overview">로딩 전</pre>
+    </section>
+    <section class="card">
+      <h2>Cheats</h2>
+      <p class="muted">치팅 로그와 봇 가드 이벤트를 조회합니다.</p>
+      <button data-load="/api/admin/cheats" data-target="cheats">치팅 로그</button>
+      <pre id="cheats">[]</pre>
+    </section>
+    <section class="card">
+      <h2>Clans</h2>
+      <p class="muted">생성된 클랜 목록을 확인합니다.</p>
+      <button data-load="/api/admin/clans" data-target="clans">클랜 조회</button>
+      <pre id="clans">[]</pre>
+    </section>
+    <section class="card">
+      <h2>Events</h2>
+      <p class="muted">라이브 이벤트를 만들고 조회합니다.</p>
+      <input id="eventTitle" placeholder="이벤트 제목" value="Weekend Royale">
+      <button id="createEvent">이벤트 생성</button>
+      <button data-load="/api/admin/events" data-target="events">이벤트 조회</button>
+      <pre id="events">[]</pre>
+    </section>
+  </main>
+  <script>
+    async function load(url, id) {
+      const res = await fetch(url);
+      document.getElementById(id).textContent = JSON.stringify(await res.json(), null, 2);
+    }
+    document.querySelectorAll('[data-load]').forEach(btn => {
+      btn.addEventListener('click', () => load(btn.dataset.load, btn.dataset.target));
+    });
+    createEvent.addEventListener('click', async () => {
+      const res = await fetch('/api/admin/events', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: eventTitle.value || 'Weekend Royale', reward: { tokens: 250 } }),
+      });
+      events.textContent = JSON.stringify(await res.json(), null, 2);
+    });
+    load('/api/admin/overview', 'overview');
+  </script>
+</body>
+</html>

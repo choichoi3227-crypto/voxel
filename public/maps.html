@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOXEL Maps</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    body { margin:0; background:#071019; color:#e8f1ff; font-family:system-ui,sans-serif; }
+    header, main { width:min(1120px, calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0; }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    a { color:#8bd3ff; text-decoration:none; }
+    .pill { border:1px solid #29425c; border-radius:999px; padding:8px 12px; background:#101b28; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+    .card { background:#101b28; border:1px solid #29425c; border-radius:16px; padding:16px; }
+    button { padding:10px 14px; border-radius:10px; border:0; background:#c62828; color:#fff; font-weight:800; }
+    pre { white-space:pre-wrap; background:#06101b; border-radius:12px; padding:12px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>맵 / 자원</h1>
+    <p>배틀로얄용 대형 맵, 지역별 자원 티어, 차량 지원 정보를 확인합니다.</p>
+    <nav>
+      <a class="pill" href="/">게임</a>
+      <a class="pill" href="/servers.html">서버</a>
+      <a class="pill" href="/loadouts.html">로드아웃</a>
+      <a class="pill" href="/shop.html">상점</a>
+      <a class="pill" href="/install.html">설치</a>
+    </nav>
+  </header>
+  <main>
+    <button id="refresh">새로고침</button>
+    <div id="maps" class="grid" style="margin-top:16px"></div>
+    <h2>API 응답</h2>
+    <pre id="out">로딩 중...</pre>
+  </main>
+  <script>
+    async function loadMaps() {
+      const res = await fetch('/api/maps');
+      const data = await res.json();
+      maps.innerHTML = data.maps.map(map => `
+        <section class="card">
+          <h2>${map.name}</h2>
+          <p>크기: ${map.size}</p>
+          <p>지형: ${map.terrain}</p>
+          <p>자원: ${map.lootTier}</p>
+          <p>탈 것: ${(map.vehicles || []).join(', ')}</p>
+          <button onclick="location.href='/?map=${map.id}'">이 맵으로 플레이</button>
+        </section>
+      `).join('');
+      out.textContent = JSON.stringify(data, null, 2);
+    }
+    refresh.addEventListener('click', loadMaps);
+    loadMaps();
+  </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 (function(){
-// VOXEL STRIKE — Bundled 2026-06-27T02:07:55.843Z
+// VOXEL STRIKE — Bundled 2026-06-27T05:34:53.802Z
 'use strict';
 
 
@@ -26,7 +26,7 @@ const BLOCK_COLOR = [
   { top:[130,130,135],sl:[115,115,120],sd:[100,100,105]}, // 7 CONCRETE
 ];
 
-const W = 64, H = 10, D = 64;
+const W = 192, H = 24, D = 192;
 
 class GameMap {
   constructor() {
@@ -173,16 +173,58 @@ class GameMap {
     this._box(24,3,38, 4,1,4, BLOCK.METAL);
     this._box(36,3,38, 4,1,4, BLOCK.METAL);
 
+    // ── Battle-royale scale landmarks: towns, docks, bridges, hills ──
+    for (let bx=70; bx<118; bx+=12) for (let bz=8; bz<52; bz+=14) {
+      this._box(bx,0,bz, 7,4,7, BLOCK.BRICK);
+      this._box(bx+1,1,bz+1, 5,3,5, BLOCK.AIR);
+      set(bx+3,1,bz,BLOCK.AIR); set(bx+3,2,bz,BLOCK.AIR);
+      this._box(bx,4,bz, 7,1,7, BLOCK.METAL);
+    }
+    this._box(74,0,78, 18,5,10, BLOCK.CONCRETE); this._box(76,1,80, 14,3,6, BLOCK.AIR);
+    this._box(98,0,78, 18,5,10, BLOCK.CONCRETE); this._box(100,1,80, 14,3,6, BLOCK.AIR);
+    for (let x=12;x<116;x+=8) this._box(x,0,62, 4,1,4, BLOCK.STONE);
+    this._box(56,1,58, 18,1,8, BLOCK.METAL);
+    this._box(10,0,92, 20,3,18, BLOCK.WOOD); this._box(12,1,94, 16,2,14, BLOCK.AIR);
+    this._box(34,0,92, 10,6,10, BLOCK.STONE); this._box(36,1,94, 6,5,6, BLOCK.AIR);
+    this._box(72,0,104, 42,2,8, BLOCK.CONCRETE);
+    for (let i=0;i<18;i++) { this._box(5+i*3,0,116-i, 2,1+i%3,2, BLOCK.STONE); }
+    // Vehicle pads (visual garages/ATV spawn markers)
+    this.vehicleSpawns = [
+      { x:18,y:1,z:18,type:'buggy' }, { x:86,y:1,z:18,type:'jeep' },
+      { x:110,y:1,z:82,type:'jeep' }, { x:24,y:1,z:106,type:'buggy' },
+    ];
+    for (const v of this.vehicleSpawns) { this._box(v.x-1,0,v.z-2, 3,1,5, BLOCK.METAL); }
+
+    // ── Spawn zones and lobby/plane drops ────────────────────
+    this.lobbySpawn = { x: W/2, y: 12, z: W/2 };
+    this.dropPoints = [
+      { x:18, y:14, z:18 }, { x:96, y:14, z:22 }, { x:112, y:14, z:86 }, { x:28, y:14, z:110 },
+      { x:64, y:14, z:64 }, { x:78, y:14, z:104 }, { x:42, y:14, z:52 }, { x:110, y:14, z:40 },
+    ];
+    this.lootSpawns = [];
+    for (let x=18; x<W-18; x+=16) for (let z=18; z<D-18; z+=16) {
+      const tier = (x>64 && x<128 && z>64 && z<128) ? 3 : (Math.random() > 0.55 ? 2 : 1);
+      this.lootSpawns.push({ x, y:this.floorY(x,z)+0.1, z, tier, items:['ammo','armor','medkit','weapon'] });
+    }
+    this.resourceZones = [
+      { id:'military_base', name:'Military Base', tier:3, x:82, z:86, radius:28 },
+      { id:'dockyard', name:'Dockyard', tier:2, x:24, z:102, radius:22 },
+      { id:'north_town', name:'North Town', tier:2, x:96, z:24, radius:30 },
+      { id:'quarry', name:'Quarry', tier:2, x:48, z:148, radius:24 },
+      { id:'bridge', name:'Bridge Control', tier:3, x:66, z:62, radius:18 },
+    ];
+    this.namedMaps = ['Voxel Royale Island', 'Desert Strike', 'Jungle Rush', 'Training Island'];
+
     // ── Spawn zones (floors already set) ────────────────────
     this.spawnPoints = [
       { x:4,  y:1, z:4,  team:'red'  },
       { x:6,  y:1, z:4,  team:'red'  },
       { x:5,  y:1, z:7,  team:'red'  },
       { x:7,  y:1, z:6,  team:'red'  },
-      { x:58, y:1, z:58, team:'blue' },
-      { x:56, y:1, z:58, team:'blue' },
-      { x:58, y:1, z:55, team:'blue' },
-      { x:56, y:1, z:56, team:'blue' },
+      { x:118, y:1, z:118, team:'blue' },
+      { x:116, y:1, z:118, team:'blue' },
+      { x:118, y:1, z:115, team:'blue' },
+      { x:116, y:1, z:116, team:'blue' },
     ];
   }
 
@@ -873,8 +915,8 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 //   • Post-processing: vignette, scope overlay, damage flash
 // ─────────────────────────────────────────────────────────────
 
-const FOG_START  = 18;
-const FOG_END    = 55;
+const FOG_START  = 60;
+const FOG_END    = 150;
 const SKY_TOP    = [10, 20, 40];
 const SKY_BOT    = [26, 38, 72];
 const FLOOR_COL  = [22, 20, 18];
@@ -904,7 +946,11 @@ class Renderer {
   }
 
   render(state) {
-    const { pos, eyeY, yaw, pitch, map, entities, bullets, particles, weapon, scopedIn, damageAlpha, flashAlpha } = state;
+    let { pos, eyeY, yaw, pitch, map, entities, bullets, particles, weapon, scopedIn, damageAlpha, flashAlpha } = state;
+    if (state.cameraMode === 'third') {
+      pos = { x: pos.x - Math.sin(yaw) * 4.2, y: pos.y + 1.4, z: pos.z - Math.cos(yaw) * 4.2 };
+      eyeY = pos.y + 1.2;
+    }
     const { w, h, buf, zbuf } = this;
 
     // Clear depth buffer
@@ -984,7 +1030,7 @@ class Renderer {
     let side = 0, dist = 0;
     let hit = false, hitType = 0, stepsMade = 0;
 
-    while (!hit && dist < FOG_END && stepsMade++ < 120) {
+    while (!hit && dist < FOG_END && stepsMade++ < 220) {
       if (sdX < sdZ) { sdX+=dX; mx+=stepX; side=0; dist=sdX-dX; }
       else            { sdZ+=dZ; mz+=stepZ; side=1; dist=sdZ-dZ; }
       for (let by = map.H-1; by >= 0; by--) {
@@ -1304,8 +1350,8 @@ class NetworkClient {
 
   // ── Connection ──────────────────────────────────────────────
 
-  connect(serverId, playerName, wsPath = null) {
-    this._serverUrl  = wsPath ? this._buildUrlFromPath(wsPath) : this._buildUrl(serverId);
+  connect(serverId, playerName, wsPath = null, modeId = 'multiplayer') {
+    this._serverUrl  = wsPath ? this._buildUrlFromPath(wsPath) : this._buildUrl(serverId, modeId);
     this._playerName = playerName;
     this._open();
   }
@@ -1562,11 +1608,11 @@ class NetworkClient {
     return `${proto}://${loc.host}${path.startsWith('/') ? path : '/' + path}`;
   }
 
-  _buildUrl(serverId) {
+  _buildUrl(serverId, modeId = 'multiplayer') {
     const loc = typeof window !== 'undefined' ? window.location : { hostname:'localhost', host:'localhost:8787', protocol:'http:' };
     const isLocal = loc.hostname==='localhost' || loc.hostname==='127.0.0.1';
     const proto = isLocal ? 'ws' : 'wss';
-    return `${proto}://${loc.host}/ws/${serverId}`;
+    return `${proto}://${loc.host}/ws/${serverId}/${modeId}`;
   }
 }
 
@@ -2003,328 +2049,779 @@ class HUD {
 // ── ui/menu.js ──
 // src/ui/menu.js
 // ─────────────────────────────────────────────────────────────
-// Main menu: server list, settings, leaderboard, loading screen
+// Main menu — fully responsive, mobile-friendly, mode selector
 // ─────────────────────────────────────────────────────────────
+
+const MODES = [
+  {
+    id: 'multiplayer',
+    icon: '⚔️',
+    label: '팀 데스매치',
+    desc: '레드 vs 블루 · 팀 킬 경쟁 · 리스폰 무제한',
+    badge: 'TEAM',
+    color: '#ff3333',
+  },
+  {
+    id: 'battle_royale',
+    icon: '🏆',
+    label: '배틀로얄',
+    desc: '최후의 1인 생존 · 수축하는 안전구역 · 64명',
+    badge: 'HOT',
+    color: '#ff9900',
+  },
+  { id: 'solo', icon:'🪂', label:'솔로 배틀로얄', desc:'비행기 드랍 · 낙하산 · 자기장 · 봇/플레이어 혼합', badge:'PUBG', color:'#ffcc33' },
+  { id: 'squad', icon:'👥', label:'스쿼드', desc:'4인 팀 생존 · 차량 이동 · 팀 부활 비콘', badge:'SQUAD', color:'#44ff88' },
+  {
+    id: 'training',
+    icon: '🎯',
+    label: '훈련 서버',
+    desc: '혼자 연습 · 봇 상대 · 개인 서버 1시간',
+    badge: 'SOLO',
+    color: '#44aaff',
+  },
+];
 
 class Menu {
   constructor(container) {
-    this.root    = container || document.body;
-    this._el     = {};
-    this.onPlay  = null;   // (serverObj) => void
+    this.root     = container || document.body;
+    this._el      = {};
+    this.onPlay   = null;   // (serverObj) => void
     this._servers = [];
     this._settings = loadSettings();
+    this._selectedMode = 'battle_royale';
+    this._selectedServer = null;
     this._build();
   }
 
-  // ── Build ───────────────────────────────────────────────────
+  // ── Public API ──────────────────────────────────────────────
 
-  _build() {
-    this.root.insertAdjacentHTML('beforeend', `
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-      :root{--red:#ff3333;--blue:#3366ff;--bg:#080c10;--panel:rgba(10,15,22,0.95);--border:rgba(255,51,51,0.18)}
-      *{box-sizing:border-box;margin:0;padding:0}
-      body{background:var(--bg);color:#e0e0e0;font-family:'Courier New',monospace;overflow:hidden}
-      .menu-btn{background:var(--red);color:#fff;border:none;padding:13px 38px;font-family:inherit;font-size:15px;font-weight:bold;letter-spacing:3px;cursor:pointer;border-radius:3px;transition:all .18s;text-transform:uppercase}
-      .menu-btn:hover{background:#ff5555;box-shadow:0 0 18px var(--red);transform:translateY(-2px)}
-      .menu-btn.sec{background:transparent;border:1px solid var(--red);color:var(--red)}
-      .menu-btn.sec:hover{background:rgba(255,51,51,.12)}
-      input[type=text],input[type=range]{background:#0d1117;border:1px solid var(--border);color:#ddd;padding:8px 12px;font-family:inherit;font-size:13px;border-radius:3px;outline:none;width:100%}
-      input[type=text]:focus{border-color:var(--red)}
-      .tab-btn{background:transparent;border:1px solid var(--border);color:#aaa;padding:8px 20px;cursor:pointer;font-family:inherit;font-size:12px;letter-spacing:1px;transition:all .15s;border-radius:3px}
-      .tab-btn.active,.tab-btn:hover{border-color:var(--red);color:var(--red);background:rgba(255,51,51,.08)}
-    </style>
-
-    <!-- Loading Screen -->
-    <div id="screen-loading" style="position:fixed;inset:0;background:#080c10;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;gap:18px">
-      <div style="font-size:52px;font-weight:bold;color:var(--red);letter-spacing:10px;text-shadow:0 0 30px var(--red),0 0 60px rgba(255,0,0,.3);animation:pls 2s infinite">VOXEL STRIKE</div>
-      <div style="font-size:11px;color:#444;letter-spacing:4px">TACTICAL BROWSER FPS</div>
-      <div style="width:280px;height:3px;background:#111;border-radius:2px;overflow:hidden;margin-top:8px">
-        <div id="load-bar" style="height:100%;background:var(--red);width:0;box-shadow:0 0 8px var(--red);transition:width .28s"></div>
-      </div>
-      <div id="load-text" style="font-size:11px;color:#555;letter-spacing:2px">INITIALIZING...</div>
-      <style>@keyframes pls{0%,100%{text-shadow:0 0 30px var(--red)}50%{text-shadow:0 0 50px #ff6666,0 0 80px rgba(255,0,0,.4)}}</style>
-    </div>
-
-    <!-- Main Menu -->
-    <div id="screen-menu" style="display:none;position:fixed;inset:0;z-index:900">
-      <!-- Background animated particles -->
-      <canvas id="menu-bg" style="position:absolute;inset:0;opacity:0.18"></canvas>
-
-      <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:22px;padding:20px">
-
-        <div style="text-align:center">
-          <div style="font-size:56px;font-weight:bold;color:var(--red);letter-spacing:10px;text-shadow:0 0 30px var(--red)">VOXEL STRIKE</div>
-          <div style="font-size:11px;color:#444;letter-spacing:5px;margin-top:4px">TACTICAL FPS — BROWSER EDITION</div>
-        </div>
-
-        <!-- Name input -->
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:12px;color:#666;letter-spacing:2px">닉네임</span>
-          <input id="name-input" type="text" style="width:200px" placeholder="PlayerXXXX" maxlength="20"/>
-        </div>
-
-        <!-- Menu tabs -->
-        <div style="display:flex;gap:8px">
-          <button class="tab-btn active" id="tab-servers">SERVERS</button>
-          <button class="tab-btn" id="tab-settings">SETTINGS</button>
-          <button class="tab-btn" id="tab-leaderboard">LEADERBOARD</button>
-        </div>
-
-        <!-- SERVERS panel -->
-        <div id="panel-servers" style="width:640px">
-          <div id="server-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
-          <div style="display:flex;gap:10px;margin-top:14px;justify-content:center">
-            <button class="menu-btn" id="btn-quickplay">▶ 지금 플레이</button>
-            <button class="menu-btn sec" id="btn-create-server">＋ 서버 제작</button>
-            <button class="menu-btn sec" id="btn-download">⬇ PC/Mobile 다운로드</button>
-            <button class="menu-btn sec" id="btn-refresh">↺ REFRESH</button>
-          </div>
-        </div>
-
-        <!-- SETTINGS panel -->
-        <div id="panel-settings" style="display:none;width:420px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;display:none;flex-direction:column;gap:14px">
-          <div class="setting-row" data-key="sensitivity">
-            <label style="font-size:12px;color:#aaa;letter-spacing:1px;display:block;margin-bottom:4px">마우스 감도 <span id="lbl-sensitivity">2.0</span></label>
-            <input type="range" id="sl-sensitivity" min="0.5" max="6" step="0.1" value="2.0">
-          </div>
-          <div class="setting-row" data-key="fov">
-            <label style="font-size:12px;color:#aaa;letter-spacing:1px;display:block;margin-bottom:4px">FOV <span id="lbl-fov">75</span>°</label>
-            <input type="range" id="sl-fov" min="60" max="110" step="1" value="75">
-          </div>
-          <div class="setting-row" data-key="renderScale">
-            <label style="font-size:12px;color:#aaa;letter-spacing:1px;display:block;margin-bottom:4px">렌더 해상도 <span id="lbl-renderScale">100</span>%</label>
-            <input type="range" id="sl-renderScale" min="50" max="100" step="10" value="100">
-          </div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <label style="font-size:12px;color:#aaa;letter-spacing:1px">사운드</label>
-            <input type="checkbox" id="cb-sound" checked style="width:auto;cursor:pointer">
-          </div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <label style="font-size:12px;color:#aaa;letter-spacing:1px">ADS (우클릭 조준)</label>
-            <input type="checkbox" id="cb-ads" checked style="width:auto;cursor:pointer">
-          </div>
-          <button class="menu-btn" id="btn-save-settings" style="width:100%;margin-top:4px">저장</button>
-        </div>
-
-        <!-- LEADERBOARD panel -->
-        <div id="panel-leaderboard" style="display:none;width:560px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px">
-          <div style="font-size:13px;color:#ff4444;letter-spacing:3px;margin-bottom:14px;text-align:center">🏆 GLOBAL TOP 20</div>
-          <table id="lb-table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr>
-              <th style="color:#ff4444;padding:6px 12px;border-bottom:1px solid var(--border);text-align:left">#</th>
-              <th style="color:#ff4444;padding:6px 12px;border-bottom:1px solid var(--border);text-align:left">PLAYER</th>
-              <th style="color:#ff4444;padding:6px 12px;border-bottom:1px solid var(--border)">KILLS</th>
-              <th style="color:#ff4444;padding:6px 12px;border-bottom:1px solid var(--border)">K/D</th>
-            </tr></thead>
-            <tbody id="lb-body"><tr><td colspan="4" style="text-align:center;color:#444;padding:20px">불러오는 중...</td></tr></tbody>
-          </table>
-        </div>
-
-        <div style="font-size:11px;color:#2a2a2a;letter-spacing:2px;margin-top:4px">WASD 이동 · 마우스 조준 · LMB 사격 · R 재장전 · TAB 점수판 · T 채팅</div>
-      </div>
-    </div>
-
-    <!-- Pointer lock prompt -->
-    <div id="screen-pointer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);flex-direction:column;align-items:center;justify-content:center;z-index:200;gap:14px;font-family:'Courier New',monospace">
-      <div style="font-size:34px;font-weight:bold;color:#fff">⊕ CLICK TO RESUME</div>
-      <div style="font-size:13px;color:#888">ESC → 메뉴 복귀</div>
-    </div>
-    `);
-
-    // Cache elements
-    for (const id of [
-      'screen-loading','load-bar','load-text',
-      'screen-menu','menu-bg',
-      'name-input','server-grid',
-      'btn-quickplay','btn-create-server','btn-download','btn-refresh',
-      'panel-servers','panel-settings','panel-leaderboard',
-      'tab-servers','tab-settings','tab-leaderboard',
-      'sl-sensitivity','lbl-sensitivity',
-      'sl-fov','lbl-fov',
-      'sl-renderScale','lbl-renderScale',
-      'cb-sound','cb-ads',
-      'btn-save-settings',
-      'lb-body',
-      'screen-pointer',
-    ]) {
-      this._el[id] = document.getElementById(id);
-    }
-
-    this._bindEvents();
-    this._startMenuBg();
-    this._applySettings();
-  }
-
-  // ── Public ──────────────────────────────────────────────────
-
-  /** Animate loading bar: steps = [{pct, text}] */
   async loadWith(steps) {
     for (const { pct, text } of steps) {
-      if (this._el['load-bar'])  this._el['load-bar'].style.width  = pct + '%';
-      if (this._el['load-text']) this._el['load-text'].textContent = text;
-      await sleep(260);
+      if (this._el['vs-load-bar'])  this._el['vs-load-bar'].style.width  = pct + '%';
+      if (this._el['vs-load-text']) this._el['vs-load-text'].textContent = text;
+      await sleep(240);
     }
-    await sleep(300);
-    this._el['screen-loading'].style.display = 'none';
-    this._el['screen-menu'].style.display    = 'flex';
-    this._el['screen-menu'].style.flexDirection = 'column';
-    this._el['screen-menu'].style.alignItems    = 'center';
-    this._el['screen-menu'].style.justifyContent = 'center';
-    this._el['screen-menu'].style.height = '100%';
+    await sleep(280);
+    this._el['vs-loading'].style.display = 'none';
+    this._el['vs-menu'].style.display = 'flex';
   }
 
-  hideMenu()       { if (this._el['screen-menu']) this._el['screen-menu'].style.display = 'none'; }
-  showMenu()       { if (this._el['screen-menu']) this._el['screen-menu'].style.display = 'flex'; }
-  showPointerMsg() { if (this._el['screen-pointer']) this._el['screen-pointer'].style.display = 'flex'; }
-  hidePointerMsg() { if (this._el['screen-pointer']) this._el['screen-pointer'].style.display = 'none'; }
+  hideMenu()       { if (this._el['vs-menu'])    this._el['vs-menu'].style.display    = 'none'; }
+  showMenu()       { if (this._el['vs-menu'])    this._el['vs-menu'].style.display    = 'flex'; }
+  showPointerMsg() { if (this._el['vs-pointer']) this._el['vs-pointer'].style.display = 'flex'; }
+  hidePointerMsg() { if (this._el['vs-pointer']) this._el['vs-pointer'].style.display = 'none'; }
 
   get playerName() {
-    const v = this._el['name-input']?.value?.trim();
-    return v || ('Player' + Math.floor(Math.random()*9999));
+    const v = this._el['vs-name']?.value?.trim();
+    return v || ('Player' + Math.floor(Math.random() * 9999));
   }
-
   get settings() { return this._settings; }
 
   populateServers(servers) {
     this._servers = servers;
-    const grid = this._el['server-grid'];
-    if (!grid) return;
-    grid.innerHTML = '';
-    for (const s of servers) {
-      const pingColor = s.ping<50?'#44ff88':s.ping<120?'#ffaa44':'#ff4444';
-      const full      = s.players >= s.maxPlayers;
-      const el        = document.createElement('div');
-      el.style.cssText = 'background:#0d1117;border:1px solid rgba(255,51,51,.18);border-radius:7px;padding:14px;cursor:pointer;transition:all .17s;display:flex;flex-direction:column;gap:5px';
-      el.innerHTML = `
-        <div style="font-size:13px;font-weight:bold;color:#ff6644">${s.flag||''} ${s.name}</div>
-        <div style="font-size:11px;color:#556">${s.region}</div>
-        <div style="font-size:11px;color:${full?'#ff4444':'#778'}">${s.players}/${s.maxPlayers} 명${full?' · FULL':''}</div>
-        <div style="font-size:11px;color:${pingColor}">핑: ${s.ping??'?'}ms</div>
-      `;
-      if (!full) {
-        el.addEventListener('mouseenter', () => { el.style.borderColor='#ff4444'; el.style.background='#1a0a0a'; el.style.transform='translateY(-2px)'; });
-        el.addEventListener('mouseleave', () => { el.style.borderColor='rgba(255,51,51,.18)'; el.style.background='#0d1117'; el.style.transform='translateY(0)'; });
-        el.addEventListener('click', () => this.onPlay?.(s));
-      } else {
-        el.style.opacity = '0.4'; el.style.cursor = 'not-allowed';
-      }
-      grid.appendChild(el);
-    }
+    this._renderServers();
   }
 
   populateLeaderboard(entries) {
     const tbody = this._el['lb-body'];
     if (!tbody) return;
-    if (!entries.length) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:#444;padding:20px">데이터 없음</td></tr>'; return; }
-    tbody.innerHTML = entries.slice(0,20).map((e,i) => `
-      <tr style="border-bottom:1px solid #111">
-        <td style="padding:6px 12px;color:${i<3?'#ffdd44':'#666'}">${i+1}</td>
-        <td style="padding:6px 12px">${e.name}</td>
-        <td style="padding:6px 12px;text-align:center">${e.kills}</td>
-        <td style="padding:6px 12px;text-align:center;color:#44ff88">${e.kd}</td>
-      </tr>
-    `).join('');
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="vs-lb-empty">데이터 없음</td></tr>';
+      return;
+    }
+    tbody.innerHTML = entries.slice(0, 20).map((e, i) => `
+      <tr class="vs-lb-row">
+        <td class="vs-lb-rank ${i < 3 ? 'top' : ''}">${i < 3 ? ['🥇','🥈','🥉'][i] : i+1}</td>
+        <td class="vs-lb-name">${e.name}</td>
+        <td class="vs-lb-num">${e.kills}</td>
+        <td class="vs-lb-kd">${e.kd}</td>
+      </tr>`).join('');
+  }
+
+  // ── Build ───────────────────────────────────────────────────
+
+  _build() {
+    const style = document.createElement('style');
+    style.textContent = `
+      @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+
+      :root {
+        --vs-red:    #ff3333;
+        --vs-orange: #ff7700;
+        --vs-blue:   #3399ff;
+        --vs-bg:     #07090d;
+        --vs-panel:  rgba(10,14,22,0.97);
+        --vs-border: rgba(255,51,51,0.15);
+        --vs-text:   #c8d0dc;
+        --vs-muted:  #48505a;
+      }
+
+      .vs-root { font-family: 'Rajdhani', 'Courier New', monospace; }
+
+      /* ── Loading ── */
+      #vs-loading {
+        position: fixed; inset: 0; background: var(--vs-bg);
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; z-index: 2000; gap: 16px;
+      }
+      .vs-logo-big {
+        font-size: clamp(32px, 8vw, 64px); font-weight: 700;
+        color: var(--vs-red); letter-spacing: clamp(4px,2vw,12px);
+        text-shadow: 0 0 40px var(--vs-red), 0 0 80px rgba(255,0,0,.2);
+        animation: vs-pulse 2s infinite;
+      }
+      .vs-tagline { font-size: 11px; color: var(--vs-muted); letter-spacing: 4px; }
+      .vs-load-track {
+        width: min(300px, 75vw); height: 3px; background: #111; border-radius: 2px; overflow: hidden;
+      }
+      #vs-load-bar {
+        height: 100%; background: var(--vs-red); width: 0;
+        box-shadow: 0 0 10px var(--vs-red); transition: width .3s ease;
+      }
+      #vs-load-text { font-size: 11px; color: var(--vs-muted); letter-spacing: 3px; }
+
+      /* ── Menu root ── */
+      #vs-menu {
+        position: fixed; inset: 0; z-index: 900;
+        display: none; flex-direction: column;
+        overflow-y: auto; overflow-x: hidden;
+        background: var(--vs-bg);
+      }
+
+      /* ── Animated BG ── */
+      #vs-bg-canvas {
+        position: fixed; inset: 0; opacity: .12;
+        pointer-events: none; z-index: 0;
+      }
+
+      /* ── Layout ── */
+      .vs-inner {
+        position: relative; z-index: 1;
+        display: flex; flex-direction: column;
+        align-items: center;
+        min-height: 100%;
+        padding: clamp(16px, 4vw, 40px) clamp(12px, 4vw, 32px);
+        gap: clamp(14px, 2.5vh, 24px);
+      }
+
+      /* ── Header ── */
+      .vs-header { text-align: center; }
+      .vs-logo {
+        font-size: clamp(28px, 6vw, 52px); font-weight: 700;
+        color: var(--vs-red); letter-spacing: clamp(3px, 1.5vw, 10px);
+        text-shadow: 0 0 30px var(--vs-red);
+        animation: vs-pulse 2.5s infinite;
+      }
+      .vs-subtitle { font-size: clamp(9px, 1.5vw, 11px); color: var(--vs-muted); letter-spacing: 4px; margin-top: 4px; }
+
+      /* ── Name row ── */
+      .vs-name-row {
+        display: flex; align-items: center; gap: 10px;
+        width: 100%; max-width: 480px;
+        background: rgba(255,51,51,.05);
+        border: 1px solid var(--vs-border);
+        border-radius: 8px; padding: 10px 16px;
+      }
+      .vs-name-label { font-size: 11px; color: var(--vs-muted); letter-spacing: 2px; white-space: nowrap; }
+      #vs-name {
+        flex: 1; background: transparent; border: none;
+        color: var(--vs-text); font-family: inherit; font-size: 15px;
+        font-weight: 600; outline: none; min-width: 0;
+      }
+      #vs-name::placeholder { color: var(--vs-muted); }
+
+      /* ── Tabs ── */
+      .vs-tabs {
+        display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+        width: 100%; max-width: 560px;
+      }
+      .vs-tab {
+        background: transparent; border: 1px solid var(--vs-border);
+        color: var(--vs-muted); padding: 8px 18px;
+        cursor: pointer; font-family: inherit; font-size: 12px;
+        letter-spacing: 2px; border-radius: 6px;
+        transition: all .15s; white-space: nowrap;
+      }
+      .vs-tab:hover, .vs-tab.active {
+        border-color: var(--vs-red); color: var(--vs-red);
+        background: rgba(255,51,51,.08);
+      }
+
+      /* ── Panels ── */
+      .vs-panel {
+        width: 100%; max-width: 720px;
+        display: none; flex-direction: column; gap: 16px;
+      }
+      .vs-panel.active { display: flex; }
+
+      /* ── Mode cards ── */
+      .vs-modes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+      .vs-mode-card {
+        border: 2px solid var(--vs-border); border-radius: 10px;
+        padding: 16px; cursor: pointer;
+        transition: all .18s; position: relative; overflow: hidden;
+        background: rgba(255,255,255,.02);
+      }
+      .vs-mode-card:hover { transform: translateY(-2px); }
+      .vs-mode-card.selected {
+        background: rgba(255,51,51,.08);
+      }
+      .vs-mode-icon { font-size: 28px; margin-bottom: 8px; }
+      .vs-mode-label { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+      .vs-mode-desc { font-size: 11px; color: var(--vs-muted); line-height: 1.5; }
+      .vs-mode-badge {
+        position: absolute; top: 10px; right: 10px;
+        font-size: 9px; letter-spacing: 2px;
+        padding: 2px 7px; border-radius: 4px;
+        font-weight: 700; background: var(--vs-red); color: #fff;
+      }
+      .vs-mode-check {
+        position: absolute; bottom: 10px; right: 10px;
+        font-size: 18px; opacity: 0; transition: opacity .15s;
+      }
+      .vs-mode-card.selected .vs-mode-check { opacity: 1; }
+
+      /* ── Server list ── */
+      .vs-server-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 8px;
+      }
+      .vs-server-card {
+        background: rgba(255,255,255,.025);
+        border: 1px solid var(--vs-border);
+        border-radius: 8px; padding: 14px;
+        cursor: pointer; transition: all .15s;
+        display: flex; flex-direction: column; gap: 5px;
+      }
+      .vs-server-card:not(.full):hover {
+        border-color: var(--vs-red); background: rgba(255,51,51,.07);
+        transform: translateY(-2px);
+      }
+      .vs-server-card.selected { border-color: var(--vs-red); background: rgba(255,51,51,.12); }
+      .vs-server-card.full { opacity: .38; cursor: not-allowed; }
+      .vs-srv-name { font-size: 14px; font-weight: 700; color: #ff6644; }
+      .vs-srv-region { font-size: 11px; color: var(--vs-muted); }
+      .vs-srv-row { display: flex; justify-content: space-between; font-size: 11px; }
+      .vs-srv-players { color: var(--vs-text); }
+      .vs-srv-ping { font-weight: 600; }
+      .vs-srv-bar {
+        height: 3px; border-radius: 2px; background: #1a2030; overflow: hidden; margin-top: 2px;
+      }
+      .vs-srv-bar-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+      .vs-srv-selected-tag {
+        font-size: 10px; color: var(--vs-red); letter-spacing: 1px; display: none;
+      }
+      .vs-server-card.selected .vs-srv-selected-tag { display: block; }
+
+      /* ── Play button area ── */
+      .vs-play-row {
+        display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+      }
+      .vs-btn {
+        background: var(--vs-red); color: #fff; border: none;
+        padding: 14px 32px; font-family: inherit; font-size: 14px;
+        font-weight: 700; letter-spacing: 3px; cursor: pointer;
+        border-radius: 6px; transition: all .18s; text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .vs-btn:hover { background: #ff5555; box-shadow: 0 0 22px rgba(255,51,51,.5); transform: translateY(-2px); }
+      .vs-btn:active { transform: translateY(0); }
+      .vs-btn.sec {
+        background: transparent; border: 1px solid var(--vs-border);
+        color: var(--vs-muted); font-size: 12px; padding: 12px 20px;
+      }
+      .vs-btn.sec:hover { border-color: var(--vs-red); color: var(--vs-red); background: rgba(255,51,51,.06); box-shadow: none; }
+
+      /* ── Settings ── */
+      .vs-settings { display: flex; flex-direction: column; gap: 18px; }
+      .vs-setting-label {
+        font-size: 12px; color: var(--vs-muted); letter-spacing: 1px;
+        display: flex; justify-content: space-between; margin-bottom: 6px;
+      }
+      .vs-setting-label span { color: var(--vs-text); font-weight: 600; }
+      input[type=range].vs-slider {
+        width: 100%; -webkit-appearance: none; background: transparent; cursor: pointer;
+      }
+      input[type=range].vs-slider::-webkit-slider-runnable-track {
+        height: 4px; border-radius: 2px;
+        background: linear-gradient(90deg, var(--vs-red) var(--pct,50%), #1e2530 var(--pct,50%));
+      }
+      input[type=range].vs-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 16px; height: 16px;
+        border-radius: 50%; background: #fff;
+        border: 2px solid var(--vs-red); margin-top: -6px;
+        box-shadow: 0 0 8px rgba(255,51,51,.4);
+      }
+      input[type=range].vs-slider::-moz-range-track {
+        height: 4px; border-radius: 2px; background: #1e2530;
+      }
+      input[type=range].vs-slider::-moz-range-progress { background: var(--vs-red); }
+      input[type=range].vs-slider::-moz-range-thumb {
+        width: 16px; height: 16px; border-radius: 50%;
+        background: #fff; border: 2px solid var(--vs-red);
+      }
+      .vs-toggle-row { display: flex; justify-content: space-between; align-items: center; }
+      .vs-toggle-label { font-size: 13px; color: var(--vs-text); }
+      .vs-toggle {
+        position: relative; display: inline-block; width: 42px; height: 24px;
+      }
+      .vs-toggle input { opacity: 0; width: 0; height: 0; }
+      .vs-toggle-track {
+        position: absolute; inset: 0; border-radius: 12px;
+        background: #1e2530; cursor: pointer; transition: background .2s;
+      }
+      .vs-toggle-track::after {
+        content: ''; position: absolute; left: 3px; top: 3px;
+        width: 18px; height: 18px; border-radius: 50%;
+        background: #fff; transition: transform .2s;
+      }
+      .vs-toggle input:checked + .vs-toggle-track { background: var(--vs-red); }
+      .vs-toggle input:checked + .vs-toggle-track::after { transform: translateX(18px); }
+
+      /* ── Leaderboard ── */
+      .vs-lb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .vs-lb-table th {
+        color: var(--vs-red); padding: 8px 12px;
+        border-bottom: 1px solid var(--vs-border); text-align: left;
+        font-size: 11px; letter-spacing: 2px;
+      }
+      .vs-lb-row { border-bottom: 1px solid rgba(255,255,255,.04); transition: background .1s; }
+      .vs-lb-row:hover { background: rgba(255,51,51,.05); }
+      .vs-lb-rank { padding: 8px 12px; color: var(--vs-muted); min-width: 40px; }
+      .vs-lb-rank.top { font-size: 16px; }
+      .vs-lb-name { padding: 8px 12px; color: var(--vs-text); font-weight: 600; }
+      .vs-lb-num  { padding: 8px 12px; text-align: center; color: #fff; font-weight: 700; }
+      .vs-lb-kd   { padding: 8px 12px; text-align: center; color: #44ff88; font-weight: 600; }
+      .vs-lb-empty { text-align: center; color: var(--vs-muted); padding: 28px; }
+
+      /* ── Help text ── */
+.vs-loadout{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}.vs-chip{border:1px solid var(--vs-border);background:#101722;color:#cbd5e1;border-radius:999px;padding:9px 14px;font-family:inherit;cursor:pointer}.vs-chip.active,.vs-chip:hover{border-color:#ff3333;color:#fff;background:#ff333322}
+      .vs-hint { font-size: 11px; color: #6b7280; letter-spacing: 2px; text-align: center; }
+
+      /* ── Pointer lock ── */
+      #vs-pointer {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,.75); backdrop-filter: blur(8px);
+        flex-direction: column; align-items: center; justify-content: center;
+        z-index: 200; gap: 12px; font-family: inherit;
+      }
+      .vs-pointer-title { font-size: clamp(24px, 5vw, 36px); font-weight: 700; color: #fff; }
+      .vs-pointer-sub   { font-size: 13px; color: #777; }
+
+      /* ── Animations ── */
+      @keyframes vs-pulse {
+        0%,100% { text-shadow: 0 0 30px var(--vs-red); }
+        50%      { text-shadow: 0 0 55px #ff6666, 0 0 90px rgba(255,0,0,.35); }
+      }
+      @keyframes vs-fadein {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .vs-panel.active { animation: vs-fadein .2s ease; }
+
+      /* ── Responsive tweaks ── */
+      @media (max-width: 480px) {
+        .vs-modes { grid-template-columns: 1fr; }
+        .vs-play-row { flex-direction: column; align-items: stretch; }
+        .vs-btn { text-align: center; }
+        .vs-tabs { gap: 4px; }
+        .vs-tab { padding: 7px 12px; font-size: 11px; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    const html = `
+    <div class="vs-root">
+
+      <!-- Loading -->
+      <div id="vs-loading">
+        <div class="vs-logo-big">VOXEL STRIKE</div>
+        <div class="vs-tagline">TACTICAL BROWSER FPS</div>
+        <div class="vs-load-track">
+          <div id="vs-load-bar"></div>
+        </div>
+        <div id="vs-load-text">INITIALIZING...</div>
+      </div>
+
+      <!-- Menu -->
+      <div id="vs-menu">
+        <canvas id="vs-bg-canvas"></canvas>
+        <div class="vs-inner">
+
+          <!-- Header -->
+          <div class="vs-header">
+            <div class="vs-logo">VOXEL STRIKE</div>
+            <div class="vs-subtitle">TACTICAL FPS · BROWSER EDITION</div>
+          </div>
+
+          <!-- Nickname -->
+          <div class="vs-name-row">
+            <div class="vs-name-label">닉네임</div>
+            <input id="vs-name" type="text" placeholder="PlayerXXXX" maxlength="20" autocomplete="off" spellcheck="false"/>
+          </div>
+
+          <!-- Tabs -->
+          <div class="vs-tabs">
+            <button class="vs-tab active" data-tab="play">🎮 플레이</button>
+            <button class="vs-tab" data-tab="servers">🌐 서버</button>
+            <button class="vs-tab" data-tab="settings">⚙ 설정</button>
+            <button class="vs-tab" data-tab="leaderboard">🏆 랭킹</button>
+            <button class="vs-tab" data-tab="account">👤 가입/로그인</button>
+          </div>
+
+          <!-- PLAY panel -->
+          <div class="vs-panel active" id="vs-panel-play">
+            <div class="vs-modes" id="vs-modes"></div>
+            <div class="vs-play-row">
+              <button class="vs-btn" id="vs-btn-play">▶ 지금 플레이</button>
+              <button class="vs-btn sec" id="vs-btn-quickplay">⚡ 빠른 게임</button>
+              <button class="vs-btn sec" id="vs-btn-install">⬇ 앱 설치</button>
+            </div>
+            <div class="vs-loadout" id="vs-loadout">
+              <button class="vs-chip active" data-weapon="ak47">AK</button><button class="vs-chip" data-weapon="m4a1">M4</button><button class="vs-chip" data-weapon="kar98">Kar98</button><button class="vs-chip" data-weapon="m249">M249</button>
+            </div>
+          </div>
+
+          <!-- SERVERS panel -->
+          <div class="vs-panel" id="vs-panel-servers">
+            <div class="vs-server-grid" id="vs-server-grid"></div>
+            <div class="vs-play-row">
+              <button class="vs-btn" id="vs-btn-srv-play">▶ 이 서버로 플레이</button>
+              <button class="vs-btn sec" id="vs-btn-create">＋ 개인 서버 만들기</button>
+              <button class="vs-btn sec" id="vs-btn-refresh">↺ 새로고침</button>
+            </div>
+          </div>
+
+          <!-- SETTINGS panel -->
+          <div class="vs-panel" id="vs-panel-settings">
+            <div class="vs-settings">
+              <div>
+                <div class="vs-setting-label">마우스 감도 <span id="lbl-sens">2.0</span></div>
+                <input class="vs-slider" type="range" id="sl-sens" min="0.5" max="6" step="0.1" value="2.0">
+              </div>
+              <div>
+                <div class="vs-setting-label">시야각 (FOV) <span id="lbl-fov">75</span>°</div>
+                <input class="vs-slider" type="range" id="sl-fov" min="60" max="110" step="1" value="75">
+              </div>
+              <div>
+                <div class="vs-setting-label">렌더 해상도 <span id="lbl-res">100</span>%</div>
+                <input class="vs-slider" type="range" id="sl-res" min="50" max="100" step="10" value="100">
+              </div>
+              <div class="vs-toggle-row">
+                <span class="vs-toggle-label">사운드</span>
+                <label class="vs-toggle"><input type="checkbox" id="cb-sound" checked><span class="vs-toggle-track"></span></label>
+              </div>
+              <div class="vs-toggle-row">
+                <span class="vs-toggle-label">ADS (우클릭 조준)</span>
+                <label class="vs-toggle"><input type="checkbox" id="cb-ads" checked><span class="vs-toggle-track"></span></label>
+              </div>
+              <button class="vs-btn" id="vs-btn-save" style="margin-top:4px">저장</button>
+            </div>
+          </div>
+
+          <!-- ACCOUNT panel -->
+          <div class="vs-panel" id="vs-panel-account">
+            <div class="vs-settings">
+              <div class="vs-name-row"><div class="vs-name-label">이메일</div><input id="vs-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
+              <div class="vs-name-row"><div class="vs-name-label">비밀번호</div><input id="vs-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+              <div class="vs-play-row"><button class="vs-btn" id="vs-btn-login">로그인</button><button class="vs-btn sec" id="vs-btn-register">가입</button></div>
+              <div id="vs-auth-status" class="vs-hint">오프라인에서도 게스트 저장 후 서버 연결 시 동기화됩니다.</div>
+            </div>
+          </div>
+
+          <!-- LEADERBOARD panel -->
+          <div class="vs-panel" id="vs-panel-leaderboard">
+            <table class="vs-lb-table">
+              <thead><tr>
+                <th>#</th><th>플레이어</th><th>킬</th><th>K/D</th>
+              </tr></thead>
+              <tbody id="vs-lb-body"><tr><td class="vs-lb-empty" colspan="4">불러오는 중...</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="vs-hint">WASD 이동 &nbsp;·&nbsp; 마우스 조준 &nbsp;·&nbsp; LMB 사격 &nbsp;·&nbsp; R 재장전 &nbsp;·&nbsp; TAB 점수판</div>
+
+        </div>
+      </div>
+
+      <!-- Pointer lock -->
+      <div id="vs-pointer">
+        <div class="vs-pointer-title">⊕ 클릭해서 재개</div>
+        <div class="vs-pointer-sub">ESC → 메뉴로 돌아가기</div>
+      </div>
+
+    </div>`;
+
+    this.root.insertAdjacentHTML('beforeend', html);
+
+    // Cache
+    const ids = [
+      'vs-loading','vs-load-bar','vs-load-text',
+      'vs-menu','vs-bg-canvas',
+      'vs-name',
+      'vs-modes','vs-server-grid',
+      'vs-btn-play','vs-btn-quickplay','vs-btn-srv-play','vs-btn-create','vs-btn-refresh',
+      'vs-panel-play','vs-panel-servers','vs-panel-settings','vs-panel-leaderboard','vs-panel-account',
+      'sl-sens','lbl-sens','sl-fov','lbl-fov','sl-res','lbl-res',
+      'cb-sound','cb-ads','vs-btn-save','vs-btn-install','vs-email','vs-pass','vs-btn-login','vs-btn-register','vs-auth-status',
+      'vs-lb-body','vs-pointer',
+    ];
+    for (const id of ids) this._el[id] = document.getElementById(id);
+
+    this._buildModeCards();
+    this._renderServers();
+    this._bindEvents();
+    this._applySettings();
+    this._startBg();
+    this._fetchServers();
+  }
+
+  // ── Mode cards ──────────────────────────────────────────────
+
+  _buildModeCards() {
+    const container = this._el['vs-modes'];
+    if (!container) return;
+    container.innerHTML = '';
+    for (const m of MODES) {
+      const card = document.createElement('div');
+      card.className = 'vs-mode-card' + (m.id === this._selectedMode ? ' selected' : '');
+      card.dataset.mode = m.id;
+      card.style.setProperty('--mode-color', m.color);
+      card.innerHTML = `
+        <div class="vs-mode-icon">${m.icon}</div>
+        <div class="vs-mode-label">${m.label}</div>
+        <div class="vs-mode-desc">${m.desc}</div>
+        <div class="vs-mode-badge" style="background:${m.color}">${m.badge}</div>
+        <div class="vs-mode-check">✓</div>
+      `;
+      // border color on selected
+      if (m.id === this._selectedMode) card.style.borderColor = m.color;
+      card.addEventListener('click', () => {
+        this._selectedMode = m.id;
+        container.querySelectorAll('.vs-mode-card').forEach(c => {
+          const mid = c.dataset.mode;
+          const mc = MODES.find(x => x.id === mid);
+          c.classList.remove('selected');
+          c.style.borderColor = '';
+        });
+        card.classList.add('selected');
+        card.style.borderColor = m.color;
+      });
+      container.appendChild(card);
+    }
+  }
+
+  // ── Server rendering ────────────────────────────────────────
+
+  _renderServers() {
+    const grid = this._el['vs-server-grid'];
+    if (!grid) return;
+    if (!this._servers.length) {
+      grid.innerHTML = '<div style="color:var(--vs-muted);font-size:13px;padding:20px;text-align:center">서버 불러오는 중...</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    for (const s of this._servers) {
+      const fill     = Math.min(1, (s.players || 0) / Math.max(1, s.maxPlayers || 20));
+      const full     = s.players >= s.maxPlayers;
+      const ping     = s.ping ?? '?';
+      const pingColor = typeof ping === 'number'
+        ? (ping < 60 ? '#44ff88' : ping < 120 ? '#ffcc44' : '#ff4444') : '#888';
+      const fillColor = fill > .8 ? '#ff4444' : fill > .5 ? '#ffaa44' : '#44cc88';
+
+      const card = document.createElement('div');
+      card.className = 'vs-server-card' + (full ? ' full' : '') + (this._selectedServer?.id === s.id ? ' selected' : '');
+      card.innerHTML = `
+        <div class="vs-srv-name">${s.flag || ''} ${s.name}</div>
+        <div class="vs-srv-region">${s.region}</div>
+        <div class="vs-srv-row">
+          <span class="vs-srv-players">${s.players}/${s.maxPlayers}명${full ? ' · FULL' : ''}</span>
+          <span class="vs-srv-ping" style="color:${pingColor}">${ping}ms</span>
+        </div>
+        <div class="vs-srv-bar">
+          <div class="vs-srv-bar-fill" style="width:${Math.round(fill*100)}%;background:${fillColor}"></div>
+        </div>
+        <div class="vs-srv-selected-tag">✓ 선택됨</div>
+      `;
+      if (!full) {
+        card.addEventListener('click', () => {
+          this._selectedServer = s;
+          grid.querySelectorAll('.vs-server-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+        });
+      }
+      grid.appendChild(card);
+    }
   }
 
   // ── Events ──────────────────────────────────────────────────
 
   _bindEvents() {
-    const switchTab = (name) => {
-      for (const t of ['servers','settings','leaderboard']) {
-        this._el[`tab-${t}`]?.classList.toggle('active', t===name);
-        if (this._el[`panel-${t}`]) this._el[`panel-${t}`].style.display = t===name ? 'block':'none';
-      }
-    };
-    this._el['tab-servers']?.addEventListener('click', () => switchTab('servers'));
-    this._el['tab-settings']?.addEventListener('click', () => { switchTab('settings'); });
-    this._el['tab-leaderboard']?.addEventListener('click', () => {
-      switchTab('leaderboard');
-      this._fetchLeaderboard();
+    // Tabs
+    document.querySelectorAll('.vs-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.vs-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const panels = { play:'vs-panel-play', servers:'vs-panel-servers', settings:'vs-panel-settings', leaderboard:'vs-panel-leaderboard', account:'vs-panel-account' };
+        document.querySelectorAll('.vs-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(panels[tab])?.classList.add('active');
+        if (tab === 'leaderboard') this._fetchLeaderboard();
+        if (tab === 'servers') this._fetchServers();
+      });
     });
 
-    this._el['btn-quickplay']?.addEventListener('click', async () => {
+    document.querySelectorAll('.vs-chip').forEach(btn => btn.addEventListener('click', () => { document.querySelectorAll('.vs-chip').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); this._settings.weapon = btn.dataset.weapon; saveSettings(this._settings); }));
+    this._el['vs-btn-install']?.addEventListener('click', async () => { if (window.deferredInstallPrompt) { window.deferredInstallPrompt.prompt(); } else { alert('브라우저 메뉴의 “홈 화면에 추가/앱 설치”를 눌러 설치하세요.'); } });
+    for (const id of ['vs-btn-login','vs-btn-register']) this._el[id]?.addEventListener('click', () => this._auth(id.endsWith('register')));
+
+    // Play button (mode panel)
+    this._el['vs-btn-play']?.addEventListener('click', () => this._doPlay());
+
+    // Quick play
+    this._el['vs-btn-quickplay']?.addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/matchmake', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ modeId:'battle_royale' }), signal:AbortSignal.timeout(3000) });
+        const res = await fetch('/api/matchmake', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modeId: this._selectedMode }),
+          signal: AbortSignal.timeout(3000),
+        });
         const data = await res.json();
-        if (data?.server) return this.onPlay?.({ ...data.server, wsPath:data.wsPath });
+        if (data?.server) return this.onPlay?.({ ...data.server, wsPath: data.wsPath, modeId: this._selectedMode });
       } catch (_) {}
-      const best = this._servers.filter(s=>s.players<s.maxPlayers).sort((a,b)=>(a.placementScore??a.ping)-(b.placementScore??b.ping))[0];
-      if (best) this.onPlay?.(best);
+      this._doPlay();
     });
 
-    this._el['btn-create-server']?.addEventListener('click', async () => {
+    // Server panel play
+    this._el['vs-btn-srv-play']?.addEventListener('click', () => {
+      if (this._selectedServer) {
+        this.onPlay?.({ ...this._selectedServer, modeId: this._selectedMode });
+      } else {
+        this._doPlay();
+      }
+    });
+
+    // Create server
+    this._el['vs-btn-create']?.addEventListener('click', async () => {
       const ownerName = this.playerName;
       try {
-        const res = await fetch('/api/servers/custom', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ownerName, maxPlayers:64, ttlSec:7200 }), signal:AbortSignal.timeout(5000) });
+        const res = await fetch('/api/servers/custom', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ownerName, maxPlayers: 64, ttlSec: 7200 }),
+          signal: AbortSignal.timeout(5000),
+        });
         const data = await res.json();
-        if (data?.server) { alert('서버 제작 요청 완료: '+data.server.id); await this._fetchServers(); }
-      } catch { alert('현재 배포 환경에서는 커스텀 서버 API가 비활성화되어 있습니다.'); }
+        if (data?.server) {
+          this._el['vs-btn-create'].textContent = '✓ 서버 생성됨';
+          await this._fetchServers();
+          setTimeout(() => { this._el['vs-btn-create'].textContent = '＋ 개인 서버 만들기'; }, 2000);
+        }
+      } catch { alert('서버 생성에 실패했습니다.'); }
     });
 
-    this._el['btn-download']?.addEventListener('click', () => {
-      const blob = new Blob([location.href], { type:'text/plain' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'voxel-strike-web-launcher.txt';
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
-
-    this._el['btn-refresh']?.addEventListener('click', () => {
-      this._el['btn-refresh'].textContent = '↺ ...';
-      this._fetchServers().then(() => { this._el['btn-refresh'].textContent = '↺ REFRESH'; });
+    // Refresh
+    this._el['vs-btn-refresh']?.addEventListener('click', async () => {
+      const btn = this._el['vs-btn-refresh'];
+      btn.textContent = '↺ ...'; btn.disabled = true;
+      await this._fetchServers();
+      btn.textContent = '↺ 새로고침'; btn.disabled = false;
     });
 
     // Settings sliders
-    for (const key of ['sensitivity','fov','renderScale']) {
-      const sl  = this._el[`sl-${key}`];
-      const lbl = this._el[`lbl-${key}`];
-      sl?.addEventListener('input', () => {
-        if (lbl) lbl.textContent = sl.value;
-        this._settings[key] = parseFloat(sl.value);
-      });
+    for (const [key, lbl] of [['sl-sens','lbl-sens'],['sl-fov','lbl-fov'],['sl-res','lbl-res']]) {
+      const sl = this._el[key]; const lb = this._el[lbl];
+      if (!sl) continue;
+      const update = () => {
+        if (lb) lb.textContent = sl.value;
+        const pct = ((sl.value - sl.min) / (sl.max - sl.min) * 100).toFixed(1) + '%';
+        sl.style.setProperty('--pct', pct);
+      };
+      sl.addEventListener('input', update);
+      update();
     }
 
-    this._el['btn-save-settings']?.addEventListener('click', () => {
-      this._settings.sound = this._el['cb-sound']?.checked ?? true;
-      this._settings.ads   = this._el['cb-ads']?.checked   ?? true;
+    // Save settings
+    this._el['vs-btn-save']?.addEventListener('click', () => {
+      this._settings.sensitivity = parseFloat(this._el['sl-sens']?.value) || 2.0;
+      this._settings.fov         = parseInt(this._el['sl-fov']?.value)   || 75;
+      this._settings.renderScale = parseInt(this._el['sl-res']?.value)   || 100;
+      this._settings.sound       = this._el['cb-sound']?.checked ?? true;
+      this._settings.ads         = this._el['cb-ads']?.checked   ?? true;
       saveSettings(this._settings);
-      this._el['btn-save-settings'].textContent = '✓ 저장됨';
-      setTimeout(() => { this._el['btn-save-settings'].textContent = '저장'; }, 1200);
+      const btn = this._el['vs-btn-save'];
+      btn.textContent = '✓ 저장됨'; btn.style.background = '#22aa55';
+      setTimeout(() => { btn.textContent = '저장'; btn.style.background = ''; }, 1400);
     });
 
-    this._el['screen-pointer']?.addEventListener('click', () => {
+    // Pointer lock
+    this._el['vs-pointer']?.addEventListener('click', () => {
       document.getElementById('game-canvas')?.requestPointerLock();
     });
   }
 
+  _doPlay() {
+    const best = this._servers
+      .filter(s => s.players < s.maxPlayers)
+      .sort((a, b) => (a.placementScore ?? a.ping ?? 999) - (b.placementScore ?? b.ping ?? 999))[0];
+    if (best) this.onPlay?.({ ...best, modeId: this._selectedMode });
+    else if (this._servers.length) this.onPlay?.({ ...this._servers[0], modeId: this._selectedMode });
+  }
+
   _applySettings() {
     const s = this._settings;
-    if (this._el['sl-sensitivity']) { this._el['sl-sensitivity'].value = s.sensitivity; this._el['lbl-sensitivity'].textContent = s.sensitivity; }
-    if (this._el['sl-fov'])         { this._el['sl-fov'].value = s.fov; this._el['lbl-fov'].textContent = s.fov; }
-    if (this._el['sl-renderScale']) { this._el['sl-renderScale'].value = s.renderScale; this._el['lbl-renderScale'].textContent = s.renderScale; }
-    if (this._el['cb-sound'])    this._el['cb-sound'].checked = s.sound;
-    if (this._el['cb-ads'])      this._el['cb-ads'].checked   = s.ads;
+    const set = (id, val, lblId) => {
+      if (this._el[id]) {
+        this._el[id].value = val;
+        const pct = ((val - this._el[id].min) / (this._el[id].max - this._el[id].min) * 100).toFixed(1) + '%';
+        this._el[id].style.setProperty('--pct', pct);
+      }
+      if (lblId && this._el[lblId]) this._el[lblId].textContent = val;
+    };
+    set('sl-sens', s.sensitivity, 'lbl-sens');
+    set('sl-fov',  s.fov,         'lbl-fov');
+    set('sl-res',  s.renderScale, 'lbl-res');
+    if (this._el['cb-sound']) this._el['cb-sound'].checked = s.sound;
+    if (this._el['cb-ads'])   this._el['cb-ads'].checked   = s.ads;
   }
+
+  // ── Data fetchers ────────────────────────────────────────────
 
   async _fetchServers() {
     try {
       const res  = await fetch('/api/servers', { signal: AbortSignal.timeout(3000) });
       const list = await res.json();
-      // Estimate ping locally
-      for (const s of list) s.ping = s.ping ?? await estimatePing(s.id);
+      for (const s of list) if (s.ping == null) s.ping = await estimatePing(s.id);
       this.populateServers(list);
     } catch {
-      // Fallback static list
       this.populateServers([
-        { id:'asia-1', name:'Asia #1', region:'Seoul',       flag:'🇰🇷', players:0, maxPlayers:20, ping:12 },
-        { id:'asia-2', name:'Asia #2', region:'Tokyo',       flag:'🇯🇵', players:0, maxPlayers:20, ping:28 },
-        { id:'asia-3', name:'Asia #3', region:'Singapore',   flag:'🇸🇬', players:0, maxPlayers:20, ping:55 },
-        { id:'eu-1',   name:'EU #1',   region:'Frankfurt',   flag:'🇩🇪', players:0, maxPlayers:20, ping:145},
-        { id:'us-west',name:'US West', region:'Los Angeles', flag:'🇺🇸', players:0, maxPlayers:20, ping:180},
-        { id:'us-east',name:'US East', region:'New York',    flag:'🇺🇸', players:0, maxPlayers:20, ping:200},
+        { id:'asia-1',  name:'Asia #1',  region:'Seoul',       flag:'🇰🇷', players:0, maxPlayers:20, ping:12  },
+        { id:'asia-2',  name:'Asia #2',  region:'Tokyo',       flag:'🇯🇵', players:0, maxPlayers:20, ping:28  },
+        { id:'asia-3',  name:'Asia #3',  region:'Singapore',   flag:'🇸🇬', players:0, maxPlayers:20, ping:55  },
+        { id:'eu-1',    name:'EU #1',    region:'Frankfurt',   flag:'🇩🇪', players:0, maxPlayers:20, ping:145 },
+        { id:'us-west', name:'US West',  region:'Los Angeles', flag:'🇺🇸', players:0, maxPlayers:20, ping:180 },
+        { id:'us-east', name:'US East',  region:'New York',    flag:'🇺🇸', players:0, maxPlayers:20, ping:200 },
       ]);
+    }
+  }
+
+  async _auth(register=false) {
+    const username = this.playerName;
+    const email = this._el['vs-email']?.value || '';
+    const status = this._el['vs-auth-status'];
+    try {
+      const emailHash = await sha256(email.toLowerCase());
+      const res = await fetch('/api/users/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ username, emailHash }) });
+      const data = await res.json();
+      sessionStorage.setItem('vs_user', JSON.stringify(data));
+      if (status) status.textContent = `${register ? '가입' : '로그인'} 완료: ${data.username || username}`;
+    } catch (_) {
+      sessionStorage.setItem('vs_user', JSON.stringify({ username, offline:true }));
+      if (status) status.textContent = '오프라인 게스트로 저장됨. 서버가 켜지면 자동 동기화됩니다.';
     }
   }
 
@@ -2332,60 +2829,60 @@ class Menu {
     try {
       const res  = await fetch('/api/leaderboard?limit=20');
       const data = await res.json();
-      this.populateLeaderboard(data);
+      this.populateLeaderboard(Array.isArray(data) ? data : []);
     } catch { this.populateLeaderboard([]); }
   }
 
-  _startMenuBg() {
-    const canvas = this._el['menu-bg'];
+  // ── Animated BG ──────────────────────────────────────────────
+
+  _startBg() {
+    const canvas = this._el['vs-bg-canvas'];
     if (!canvas) return;
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
     const ctx = canvas.getContext('2d');
-    const stars = Array.from({length:120},()=>({
-      x:Math.random()*canvas.width,
-      y:Math.random()*canvas.height,
-      vx:(Math.random()-.5)*.3,
-      vy:(Math.random()-.5)*.3,
-      r:Math.random()*1.5,
+    const stars = Array.from({ length: 100 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - .5) * .25,
+      vy: (Math.random() - .5) * .25,
+      r: Math.random() * 1.4 + .3,
     }));
-    const draw = () => {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+    const tick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const s of stars) {
-        s.x=(s.x+s.vx+canvas.width)%canvas.width;
-        s.y=(s.y+s.vy+canvas.height)%canvas.height;
-        ctx.fillStyle=`rgba(255,60,60,${0.3+s.r/3})`;
-        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+        s.x = (s.x + s.vx + canvas.width)  % canvas.width;
+        s.y = (s.y + s.vy + canvas.height) % canvas.height;
+        ctx.fillStyle = `rgba(255,60,60,${0.25 + s.r / 4})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
       }
-      requestAnimationFrame(draw);
+      requestAnimationFrame(tick);
     };
-    draw();
+    tick();
   }
 }
 
-// ── Settings persistence ─────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────
 
 function loadSettings() {
-  try {
-    const raw = sessionStorage.getItem('vs_settings');
-    if (raw) return JSON.parse(raw);
-  } catch (_) {}
-  return { sensitivity:2.0, fov:75, renderScale:100, sound:true, ads:true };
+  try { const r = sessionStorage.getItem('vs_settings'); if (r) return JSON.parse(r); } catch (_) {}
+  return { sensitivity: 2.0, fov: 75, renderScale: 100, sound: true, ads: true };
 }
-
 function saveSettings(s) {
   try { sessionStorage.setItem('vs_settings', JSON.stringify(s)); } catch (_) {}
 }
-
 async function estimatePing(serverId) {
   try {
-    const t0  = Date.now();
-    await fetch(`/api/room/${serverId}`, { signal:AbortSignal.timeout(2000) });
+    const t0 = Date.now();
+    await fetch(`/api/room/${serverId}`, { signal: AbortSignal.timeout(2000) });
     return Date.now() - t0;
   } catch { return 999; }
 }
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function sha256(text){ const enc=new TextEncoder().encode(text||String(Math.random())); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+if (typeof window !== 'undefined') window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.deferredInstallPrompt = e; });
 
 
 // ── game/game.js ──
@@ -2442,6 +2939,11 @@ class Game {
     this.pitch       = 0;
     this.keys        = {};
     this.mouseDown   = false;
+    this.cameraMode  = 'first';
+    this.inLobby     = true;
+    this.parachuting = false;
+    this.vehicle     = null;
+    this.selectedMode = 'battle_royale';
 
     // Weapon inventory
     this.weaponStates  = {};
@@ -2473,6 +2975,7 @@ class Game {
     this._setupNet();
     this._setupInput();
     this._setupMenu();
+    this._setupMobileControls();
   }
 
   // ── Boot ────────────────────────────────────────────────────
@@ -2492,6 +2995,7 @@ class Game {
   // ── Game start / stop ────────────────────────────────────────
 
   _startGame(server) {
+    this.selectedMode = server.modeId || 'battle_royale';
     this.myName  = this.menu.playerName;
     this.myTeam  = Math.random() < 0.5 ? 'red' : 'blue';
     this.kills   = 0;
@@ -2502,18 +3006,22 @@ class Game {
     this.bullets.length = 0;
     this.particles.length = 0;
 
-    // Place player at spawn
-    const sp = this.map.spawnPoints.find(s => s.team === this.myTeam) || { x:8, y:1, z:8 };
+    // PUBG-style lobby/airdrop opening instead of spawning on the ground.
+    const drops = this.map.dropPoints || [];
+    const sp = (this.selectedMode.includes('battle') || this.selectedMode === 'solo' || this.selectedMode === 'squad')
+      ? (drops[Math.floor(Math.random()*drops.length)] || { x:64, y:14, z:64 })
+      : (this.map.spawnPoints.find(s => s.team === this.myTeam) || { x:8, y:1, z:8 });
+    this.inLobby = true; this.parachuting = sp.y > 3;
     this.phys.pos    = { x: sp.x + (Math.random()-.5)*2, y: sp.y, z: sp.z + (Math.random()-.5)*2 };
     this.phys.vel    = { x:0, y:0, z:0 };
     this.phys.health = 100;
     this.phys.alive  = true;
 
-    // Reset weapon
-    this._equip('ak47');
+    // Reset weapon/loadout
+    this._equip(this.menu.settings.weapon || 'ak47');
 
     // Bots
-    this.bots.spawn(9);
+    this.bots.spawn(this.selectedMode === 'training' ? 6 : 23);
 
     this.menu.hideMenu();
     this.hud.show();
@@ -2528,8 +3036,9 @@ class Game {
     this.canvas.requestPointerLock();
 
     // Network
-    this.net.connect(server.id, this.myName, server.wsPath || null);
-    this.hud.notify(`${server.flag||''} ${server.name} 접속!`, '#44ff88');
+    this.net.connect(server.id, this.myName, server.wsPath || null, server.modeId || 'multiplayer');
+    this.hud.notify(`${server.flag||''} ${server.name} 접속! · 3초 로비 후 강하`, '#44ff88');
+    setTimeout(() => { this.inLobby = false; this.hud.notify(this.parachuting ? '🪂 낙하산 강하! WASD로 착지 지점 조정' : 'MATCH START', '#ffdd44'); }, 3000);
   }
 
   _returnToMenu() {
@@ -2573,7 +3082,14 @@ class Game {
     if (this.mouseDown && WEAPONS[this.currentWeapon].auto) this._shoot();
 
     // Physics
-    this.phys.update(dt, this.keys, this.yaw);
+    if (this.parachuting) {
+      this.keys['ShiftLeft'] = false;
+      this.phys.vel.y = Math.max(this.phys.vel.y, -3.2);
+      this.hud.notify('🪂 PARACHUTE', '#ffdd44');
+      if (this.phys.pos.y <= this.map.floorY(this.phys.pos.x, this.phys.pos.z) + 0.15) this.parachuting = false;
+    }
+    if (this.vehicle) this._updateVehicle(dt);
+    else this.phys.update(dt, this.keys, this.yaw);
 
     // Bots
     this.bots.update(dt,
@@ -2663,6 +3179,7 @@ class Game {
       eyeY:        this.phys.eyeY,
       yaw:         this.yaw,
       pitch:       this.pitch,
+      cameraMode:  this.cameraMode,
       map:         this.map,
       entities:    allEntities,
       bullets:     this.bullets,
@@ -2843,6 +3360,8 @@ class Game {
         }
       }
 
+      if (e.code === 'KeyV') this.cameraMode = this.cameraMode === 'first' ? 'third' : 'first';
+      if (e.code === 'KeyE') this._toggleVehicle();
       if (e.code === 'KeyR') {
         const wep = this.weaponStates[this.currentWeapon];
         if (!wep.reloading) wep.startReload();
@@ -2915,6 +3434,33 @@ class Game {
     window.addEventListener('resize', () => {
       this.renderer.resize(window.innerWidth, window.innerHeight);
     });
+  }
+
+  _toggleVehicle() {
+    if (this.vehicle) { this.vehicle = null; this.hud.notify('차량에서 내림', '#ddd'); return; }
+    const near = (this.map.vehicleSpawns || []).find(v => Math.hypot(v.x-this.phys.pos.x, v.z-this.phys.pos.z) < 4);
+    if (near) { this.vehicle = { ...near, speed: 0 }; this.hud.notify(`🚙 ${near.type.toUpperCase()} 탑승`, '#44ff88'); }
+    else this.hud.notify('근처에 탈 것이 없습니다', '#ffaa44');
+  }
+
+  _updateVehicle(dt) {
+    const accel = (this.keys['KeyW']?1:0) - (this.keys['KeyS']?1:0);
+    this.vehicle.speed = Math.max(-8, Math.min(18, this.vehicle.speed + accel * 18 * dt));
+    this.vehicle.speed *= Math.pow(0.85, dt*8);
+    this.phys.pos.x += Math.sin(this.yaw) * this.vehicle.speed * dt;
+    this.phys.pos.z += Math.cos(this.yaw) * this.vehicle.speed * dt;
+    this.phys.pos.y = this.map.floorY(this.phys.pos.x, this.phys.pos.z);
+  }
+
+  _setupMobileControls() {
+    const style = document.createElement('style');
+    style.textContent = `#mobile-controls{display:none}@media (pointer:coarse),(max-width:820px){#mobile-controls{display:block;position:fixed;inset:0;z-index:30;pointer-events:none}.mc-pad{position:absolute;bottom:22px;left:18px;display:grid;grid-template-columns:repeat(3,54px);gap:8px;pointer-events:auto}.mc-pad button,.mc-actions button{width:54px;height:54px;border-radius:16px;border:1px solid #ffffff33;background:#0b1220cc;color:#fff;font-weight:800}.mc-actions{position:absolute;right:18px;bottom:22px;display:grid;grid-template-columns:repeat(2,58px);gap:10px;pointer-events:auto}.mc-fire{background:#ff3333dd!important}.mc-look{position:absolute;right:0;top:0;width:58%;height:70%;pointer-events:auto}}`;
+    document.head.appendChild(style);
+    document.body.insertAdjacentHTML('beforeend', `<div id="mobile-controls"><div class="mc-look"></div><div class="mc-pad"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><button data-k="Space">⤴</button><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div><div class="mc-actions"><button class="mc-fire">발사</button><button data-act="reload">R</button><button data-act="scope">ADS</button><button data-act="vehicle">E</button><button data-act="cam">시점</button><button data-act="weapon">무기</button></div></div>`);
+    document.querySelectorAll('#mobile-controls [data-k]').forEach(b => { const k=b.dataset.k; b.addEventListener('touchstart',e=>{e.preventDefault();this.keys[k]=true}); b.addEventListener('touchend',e=>{e.preventDefault();delete this.keys[k]}); });
+    document.querySelector('.mc-fire')?.addEventListener('touchstart', e=>{e.preventDefault();this.mouseDown=true;this._shoot();}); document.querySelector('.mc-fire')?.addEventListener('touchend', e=>{e.preventDefault();this.mouseDown=false;});
+    document.querySelector('[data-act=reload]')?.addEventListener('click',()=>this.weaponStates[this.currentWeapon].startReload()); document.querySelector('[data-act=scope]')?.addEventListener('click',()=>this.scopedIn=!this.scopedIn); document.querySelector('[data-act=vehicle]')?.addEventListener('click',()=>this._toggleVehicle()); document.querySelector('[data-act=cam]')?.addEventListener('click',()=>this.cameraMode=this.cameraMode==='first'?'third':'first'); document.querySelector('[data-act=weapon]')?.addEventListener('click',()=>{const keys=Object.keys(WEAPONS);this._equip(keys[(keys.indexOf(this.currentWeapon)+1)%keys.length]);});
+    let lx=0,ly=0; const look=document.querySelector('.mc-look'); look?.addEventListener('touchstart',e=>{lx=e.touches[0].clientX;ly=e.touches[0].clientY}); look?.addEventListener('touchmove',e=>{const t=e.touches[0];this.yaw+=(t.clientX-lx)*0.006;this.pitch=Math.max(-1.3,Math.min(1.3,this.pitch-(t.clientY-ly)*0.006));lx=t.clientX;ly=t.clientY;e.preventDefault();});
   }
 
   // ── Chat ────────────────────────────────────────────────────
