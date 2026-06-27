@@ -1,6 +1,9 @@
 // src/workers/api.js
 // ─────────────────────────────────────────────────────────────
 // REST API endpoints (per-game-server worker)
+//   GET  /api/servers                     → own/KV server list for quick play
+//   POST /api/matchmake                   → lowest-load placement
+//   GET  /api/admin/overview              → admin summary
 //   GET  /api/health                      → liveness + load (for control-plane polling)
 //   GET  /api/rooms                       → live rooms held in THIS isolate
 //   GET  /api/room/:serverId/:mode/:inst  → single room status
@@ -22,6 +25,26 @@ const json = (data, status = 200) =>
 export async function handleAPI(request, env, ctx, registry, url) {
   const path   = url.pathname.replace('/api', '');
   const method = request.method;
+
+
+  // GET /api/servers — local fallback/control-plane-compatible list.
+  if (path === '/servers' && method === 'GET') {
+    const rooms = registry.list();
+    const totalPlayers = registry.totalPlayers();
+    return json([{ id: env.SERVER_ID || 'asia-1', name: env.SERVER_NAME || env.SERVER_ID || 'Asia #1', region: env.SERVER_REGION || 'Seoul', flag: env.SERVER_FLAG || '🇰🇷', kind: env.SERVER_KIND || 'region', status: 'active', players: totalPlayers, maxPlayers: Math.max(parseInt(env.MAX_PLAYERS_PER_ROOM || '20', 10), rooms.reduce((n, r) => Math.max(n, r.maxPlayers || 20), 20)), endpoint: null }]);
+  }
+
+  // POST /api/matchmake — auto load-balancing endpoint for the "Play now" button.
+  if (path === '/matchmake' && method === 'POST') {
+    const rooms = registry.list();
+    const server = { id: env.SERVER_ID || 'asia-1', name: env.SERVER_NAME || env.SERVER_ID || 'Asia #1', region: env.SERVER_REGION || 'Seoul', flag: env.SERVER_FLAG || '🇰🇷', players: registry.totalPlayers(), maxPlayers: parseInt(env.MAX_PLAYERS_PER_ROOM || '20', 10), status: 'active' };
+    return json({ ok: true, server, wsPath: `/ws/${server.id}/battle_royale`, rooms });
+  }
+
+  // GET /api/admin/overview — single-worker admin readout.
+  if (path === '/admin/overview' && method === 'GET') {
+    return json({ serverId: env.SERVER_ID || 'unknown', region: env.SERVER_REGION || '', rooms: registry.list(), load: registry.totalPlayers(), adsenseConfigured: !!env.ADSENSE_CLIENT_ID, durableObjects: false });
+  }
 
   // GET /api/health — liveness + current load, polled by the control-plane
   if (path === '/health' && method === 'GET') {
@@ -56,6 +79,21 @@ export async function handleAPI(request, env, ctx, registry, url) {
       return json({ id: roomKey, players: parseInt(count || '0', 10), score: null, exists: false });
     }
     return json({ ...room.summary(), exists: true });
+  }
+
+
+  // POST /api/users/register — D1 is used only for user membership/profile rows.
+  if (path === '/users/register' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+    const username = String(body.username || body.name || 'Player').replace(/[<>&"']/g, '').slice(0, 32);
+    const emailHash = String(body.emailHash || '').replace(/[^a-f0-9]/gi, '').slice(0, 128);
+    const userId = `u_${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`;
+    await ensureUsersTable(env);
+    if (env.USERS_DB) {
+      await env.USERS_DB.prepare('INSERT INTO users (id, username, email_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)').bind(userId, username, emailHash, Date.now(), Date.now()).run();
+    }
+    return json({ ok: true, userId, username });
   }
 
   // GET /api/leaderboard?limit=50
@@ -160,4 +198,12 @@ function validateLeaderboardToken(body) {
     const decoded = atob(body.token);
     return decoded.startsWith(`${body.name}:${body.kills}:`);
   } catch { return false; }
+}
+
+
+async function ensureUsersTable(env) {
+  if (!env.USERS_DB) return;
+  try {
+    await env.USERS_DB.prepare('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL, email_hash TEXT, created_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL)').run();
+  } catch (_) {}
 }

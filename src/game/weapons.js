@@ -67,12 +67,19 @@ export const WEAPONS = {
     auto: false, range: 60, pellets: 1,
     kickX: 0.6, kickY: 2.0, drawTime: 0.3, slot: 4,
   },
+
+  beryl: { id:'beryl', name:'Beryl M762', damage:31, headshotMult:2.35, rof:700, spread:0.05, spreadInc:0.010, spreadMax:0.18, spreadDecay:5.5, reloadTime:2.4, mag:30, reserve:120, auto:true, range:95, pellets:1, kickX:0.55, kickY:1.55, drawTime:0.38, slot:1 },
+  sks: { id:'sks', name:'SKS', damage:53, headshotMult:2.2, rof:240, spread:0.018, spreadInc:0.012, spreadMax:0.11, spreadDecay:4, reloadTime:2.6, mag:10, reserve:60, auto:false, range:180, pellets:1, kickX:0.35, kickY:2.0, drawTime:0.55, slot:3, scopeZoom:2.5 },
+  kar98: { id:'kar98', name:'Kar98k', damage:95, headshotMult:2.4, rof:42, spread:0.002, spreadInc:0.018, spreadMax:0.05, spreadDecay:3, reloadTime:3.6, mag:5, reserve:25, auto:false, range:220, pellets:1, kickX:0.1, kickY:3.1, drawTime:0.75, slot:3, scopeZoom:5.0 },
+  vector: { id:'vector', name:'Vector', damage:16, headshotMult:2.0, rof:1100, spread:0.055, spreadInc:0.004, spreadMax:0.17, spreadDecay:9, reloadTime:1.7, mag:25, reserve:125, auto:true, range:45, pellets:1, kickX:0.18, kickY:0.55, drawTime:0.22, slot:2 },
+  ump45: { id:'ump45', name:'UMP45', damage:22, headshotMult:2.0, rof:650, spread:0.045, spreadInc:0.006, spreadMax:0.15, spreadDecay:7, reloadTime:2.0, mag:30, reserve:120, auto:true, range:55, pellets:1, kickX:0.22, kickY:0.8, drawTime:0.28, slot:2 },
+  m249: { id:'m249', name:'M249', damage:26, headshotMult:2.15, rof:750, spread:0.06, spreadInc:0.007, spreadMax:0.20, spreadDecay:4, reloadTime:5.8, mag:100, reserve:200, auto:true, range:110, pellets:1, kickX:0.42, kickY:1.3, drawTime:0.9, slot:1 },
 };
 
 export const WEAPON_SLOTS = {
-  1: ['ak47', 'm4a1'],
-  2: ['mp5', 'shotgun'],
-  3: ['awp'],
+  1: ['ak47', 'm4a1', 'beryl', 'm249'],
+  2: ['mp5', 'shotgun', 'vector', 'ump45'],
+  3: ['awp', 'sks', 'kar98'],
   4: ['deagle'],
 };
 

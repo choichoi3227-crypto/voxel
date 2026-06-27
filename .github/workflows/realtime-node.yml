@@ -1,0 +1,18 @@
+name: realtime-node-smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  express-nodemon-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: timeout 10s npx nodemon server/realtime-dev.js || test $? -eq 124
