@@ -14,9 +14,8 @@
 import { handleWebSocket } from './ws-handler.js';
 import { handleAPI }       from './api.js';
 import { RoomRegistry }    from './room-registry.js';
-import { GAME_MODE_IDS, REGIONS }   from './constants.js';
+import { GAME_MODE_IDS }   from './constants.js';
 import { blockBadBots } from './bot-guard.js';
-import { pickBestServer } from './protocol.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin':  '*',
@@ -94,7 +93,12 @@ export default {
 
     // ── Static assets ───────────────────────────────────────
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      const assetResp = await env.ASSETS.fetch(request);
+      if (assetResp.status !== 404 || request.method !== 'GET') return assetResp;
+      // SPA/page fallback: unknown human-facing paths should show the game shell,
+      // not a raw Worker Not Found page. API and WS paths are handled above.
+      const indexUrl = new URL('/index.html', url.origin);
+      return env.ASSETS.fetch(new Request(indexUrl, request));
     }
 
     return new Response('Not Found', { status: 404 });

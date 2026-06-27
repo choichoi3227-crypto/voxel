@@ -12,6 +12,10 @@
 //   GET  /api/leaderboard                 → top 100 by kills (KV)
 //   POST /api/leaderboard                 → submit score (lightweight signed token)
 //   POST /api/training/create             → spin up a personal training room on THIS worker
+//   GET  /api/shop/catalog                → skins/currency catalog
+//   POST /api/rewards/grant               → grant tokens for kills/wins/play
+//   POST /api/shop/purchase               → buy skins with earned tokens/gems
+//   POST /api/payments/paypal/create      → create PayPal purchase intent placeholder
 //
 // NOTE: The full multi-server list (/api/servers from the client's point
 // of view) is served by the control-plane worker, not here — this worker
@@ -23,6 +27,33 @@ const json = (data, status = 200) =>
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+
+const SHOP_CATALOG = {
+  currencies: [
+    { id: 'tokens', label: '토큰', earnable: true, exchange: 'kills/wins/playtime' },
+    { id: 'gems', label: '젬', earnable: false, provider: 'paypal' },
+  ],
+  paypalGemPacks: [
+    { id: 'gems_100', gems: 100, priceUsd: 0.99 },
+    { id: 'gems_550', gems: 550, priceUsd: 4.99 },
+    { id: 'gems_1200', gems: 1200, priceUsd: 9.99 },
+  ],
+  items: [
+    { id: 'skin_ak_redline', type: 'weapon_skin', weapon: 'ak47', name: 'AK Redline', price: { tokens: 900 } },
+    { id: 'skin_m4_glacier', type: 'weapon_skin', weapon: 'm4a1', name: 'M4 Glacier', price: { tokens: 1200 } },
+    { id: 'skin_kar_gold', type: 'weapon_skin', weapon: 'kar98', name: 'Kar98k Gold', price: { gems: 250 } },
+    { id: 'profile_phoenix', type: 'profile_skin', name: 'Phoenix Profile', price: { tokens: 700 } },
+    { id: 'profile_neon', type: 'profile_skin', name: 'Neon Profile', price: { gems: 180 } },
+  ],
+};
+
+const REWARD_RULES = {
+  kill: 10,
+  assist: 4,
+  win: 80,
+  top10: 25,
+  playMinute: 2,
+};
 
 export async function handleAPI(request, env, ctx, registry, url) {
   const path   = url.pathname.replace('/api', '');
@@ -156,6 +187,90 @@ export async function handleAPI(request, env, ctx, registry, url) {
     return json({ ok: true, userId, username });
   }
 
+
+  // GET /api/users/me?userId=... — D1 profile + KV wallet/inventory view.
+  if (path === '/users/me' && method === 'GET') {
+    const userId = sanitizeText(url.searchParams.get('userId') || '', 80);
+    if (!userId) return json({ error: 'Missing userId' }, 400);
+    await ensureUsersTable(env);
+    const profile = await getUserProfile(env, userId);
+    const wallet = await getWallet(env, userId);
+    const inventory = await getInventory(env, userId);
+    return json({ ok: true, profile, wallet, inventory });
+  }
+
+  // GET /api/shop/catalog — item, token and PayPal gem-pack catalog.
+  if (path === '/shop/catalog' && method === 'GET') {
+    return json({ ok: true, catalog: SHOP_CATALOG, rewardRules: REWARD_RULES });
+  }
+
+  // POST /api/rewards/grant — grant earnable tokens for play events.
+  if (path === '/rewards/grant' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+    const userId = sanitizeText(body.userId || '', 80);
+    if (!userId) return json({ error: 'Missing userId' }, 400);
+    const kills = clampInt(body.kills, 0, 200, 0);
+    const assists = clampInt(body.assists, 0, 200, 0);
+    const playMinutes = clampInt(body.playMinutes, 0, 360, 0);
+    const won = !!body.win;
+    const top10 = !!body.top10;
+    const earned = kills * REWARD_RULES.kill + assists * REWARD_RULES.assist + playMinutes * REWARD_RULES.playMinute + (won ? REWARD_RULES.win : 0) + (top10 ? REWARD_RULES.top10 : 0);
+    const wallet = await addWallet(env, userId, { tokens: earned, gems: 0 });
+    await putKVJson(env.SERVER_KV || env.ROOMS, `reward:${userId}:${Date.now()}`, { userId, kills, assists, playMinutes, won, top10, earned, ts: Date.now() }, 604800);
+    return json({ ok: true, earned, wallet });
+  }
+
+  // POST /api/shop/purchase — buy weapon/profile skins with tokens or gems.
+  if (path === '/shop/purchase' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+    const userId = sanitizeText(body.userId || '', 80);
+    const itemId = sanitizeText(body.itemId || '', 80);
+    if (!userId || !itemId) return json({ error: 'Missing userId or itemId' }, 400);
+    const item = SHOP_CATALOG.items.find(i => i.id === itemId);
+    if (!item) return json({ error: 'Unknown item' }, 404);
+    const wallet = await getWallet(env, userId);
+    const costTokens = item.price.tokens || 0;
+    const costGems = item.price.gems || 0;
+    if (wallet.tokens < costTokens || wallet.gems < costGems) return json({ error: 'Insufficient balance', wallet }, 402);
+    const nextWallet = await addWallet(env, userId, { tokens: -costTokens, gems: -costGems });
+    const inventory = await addInventoryItem(env, userId, item);
+    return json({ ok: true, item, wallet: nextWallet, inventory });
+  }
+
+  // POST /api/payments/paypal/create — server-side order placeholder for PayPal checkout.
+  if (path === '/payments/paypal/create' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const userId = sanitizeText(body.userId || '', 80);
+    const packId = sanitizeText(body.packId || '', 40);
+    const pack = SHOP_CATALOG.paypalGemPacks.find(p => p.id === packId);
+    if (!userId || !pack) return json({ error: 'Invalid userId or packId' }, 400);
+    const order = { id: `paypal_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, provider: 'paypal', status: 'created', userId, packId, gems: pack.gems, priceUsd: pack.priceUsd, createdAt: Date.now() };
+    await putKVJson(env.SERVER_KV || env.ROOMS, `payment:${order.id}`, order, 86400);
+    return json({ ok: true, order, paypalClientIdConfigured: !!env.PAYPAL_CLIENT_ID });
+  }
+
+  // POST /api/payments/paypal/capture — capture placeholder and credit gems.
+  if (path === '/payments/paypal/capture' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const orderId = sanitizeText(body.orderId || '', 80);
+    const order = await getKVJson(env.SERVER_KV || env.ROOMS, `payment:${orderId}`);
+    if (!order) return json({ error: 'Unknown order' }, 404);
+    order.status = 'captured';
+    order.capturedAt = Date.now();
+    await putKVJson(env.SERVER_KV || env.ROOMS, `payment:${order.id}`, order, 86400);
+    const wallet = await addWallet(env, order.userId, { tokens: 0, gems: order.gems });
+    return json({ ok: true, order, wallet });
+  }
+
+  // GET /api/physics/config — exposes server-side physics/science tuning to clients/tools.
+  if (path === '/physics/config' && method === 'GET') {
+    return json({ ok: true, physics: physicsConfig() });
+  }
+
   // GET /api/leaderboard?limit=50
   if (path === '/leaderboard' && method === 'GET') {
     const limit  = Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10));
@@ -261,6 +376,59 @@ function validateLeaderboardToken(body) {
 }
 
 
+
+
+async function getKVJson(kv, key) {
+  if (!kv) return null;
+  try { return await kv.get(key, { type: 'json' }); } catch { return null; }
+}
+
+async function getUserProfile(env, userId) {
+  if (!env.USERS_DB) return { id: userId, username: 'Guest', d1: false };
+  try {
+    const row = await env.USERS_DB.prepare('SELECT id, username, email_hash, created_at, last_seen_at FROM users WHERE id = ?').bind(userId).first();
+    return row || { id: userId, username: 'Unknown', d1: true };
+  } catch { return { id: userId, username: 'Unknown', d1: true }; }
+}
+
+async function getWallet(env, userId) {
+  return (await getKVJson(env.SERVER_KV || env.ROOMS, `wallet:${userId}`)) || { userId, tokens: 0, gems: 0, updatedAt: Date.now() };
+}
+
+async function addWallet(env, userId, delta) {
+  const wallet = await getWallet(env, userId);
+  wallet.tokens = Math.max(0, (wallet.tokens || 0) + (delta.tokens || 0));
+  wallet.gems = Math.max(0, (wallet.gems || 0) + (delta.gems || 0));
+  wallet.updatedAt = Date.now();
+  await putKVJson(env.SERVER_KV || env.ROOMS, `wallet:${userId}`, wallet, 0);
+  return wallet;
+}
+
+async function getInventory(env, userId) {
+  return (await getKVJson(env.SERVER_KV || env.ROOMS, `inventory:${userId}`)) || { userId, items: [], updatedAt: Date.now() };
+}
+
+async function addInventoryItem(env, userId, item) {
+  const inventory = await getInventory(env, userId);
+  if (!inventory.items.some(i => i.id === item.id)) inventory.items.push({ ...item, purchasedAt: Date.now() });
+  inventory.updatedAt = Date.now();
+  await putKVJson(env.SERVER_KV || env.ROOMS, `inventory:${userId}`, inventory, 0);
+  return inventory;
+}
+
+function physicsConfig() {
+  return {
+    realtimeTickHz: 20,
+    gravity: 22,
+    airDensity: 1.225,
+    dragModel: 'quadratic-lite',
+    serverAuthoritativeDamage: true,
+    clientPrediction: true,
+    lagCompensation: { interpolationMs: 100, maxRewindMs: 250 },
+    ballistics: { projectileTravel: true, bulletDrop: true, penetration: true, distanceFalloff: true, armorAbsorption: 0.5 },
+    movement: { jumpVelocity: 8.5, sprintMultiplier: 1.65, crouchMultiplier: 0.5, airControl: 0.35, stepHeight: 0.45 },
+  };
+}
 
 async function listStoredServers(env) {
   return listKVJson(env.SERVER_KV || env.ROOMS, 'server:');
