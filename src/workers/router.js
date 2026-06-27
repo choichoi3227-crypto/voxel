@@ -92,15 +92,20 @@ export default {
     }
 
     // ── Static assets ───────────────────────────────────────
-    if (env.ASSETS) {
-      const assetResp = await env.ASSETS.fetch(request);
+    // env.ASSETS  → Workers Assets (wrangler.toml [assets] 또는 Pages)
+    // env.__STATIC_CONTENT → Workers Sites ([site] bucket 방식)
+    const assets = env.ASSETS || env.__STATIC_CONTENT || null;
+
+    if (assets) {
+      const assetResp = await assets.fetch(request);
       if (assetResp.status !== 404 || request.method !== 'GET') return assetResp;
-      // SPA/page fallback: unknown human-facing paths should show the game shell,
-      // not a raw Worker Not Found page. API and WS paths are handled above.
+      // SPA/page fallback: 알 수 없는 경로는 game shell(index.html)로 fallback
       const indexUrl = new URL('/index.html', url.origin);
-      return env.ASSETS.fetch(new Request(indexUrl, request));
+      return assets.fetch(new Request(indexUrl, request));
     }
 
+    // Workers Sites 환경에서 __STATIC_CONTENT_MANIFEST가 있지만
+    // 아직 getAssetFromKV를 쓰지 않는 경우를 대비한 마지막 fallback
     return new Response('Not Found', { status: 404 });
   },
 };
