@@ -138,7 +138,7 @@ export class Game {
     this.canvas.requestPointerLock();
 
     // Network
-    this.net.connect(server.id, this.myName, server.wsPath || null);
+    this.net.connect(server.id, this.myName, server.wsPath || null, server.modeId || 'multiplayer');
     this.hud.notify(`${server.flag||''} ${server.name} 접속!`, '#44ff88');
   }
 
