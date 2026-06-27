@@ -46,8 +46,8 @@ export class NetworkClient {
 
   // ── Connection ──────────────────────────────────────────────
 
-  connect(serverId, playerName, wsPath = null) {
-    this._serverUrl  = wsPath ? this._buildUrlFromPath(wsPath) : this._buildUrl(serverId);
+  connect(serverId, playerName, wsPath = null, modeId = 'multiplayer') {
+    this._serverUrl  = wsPath ? this._buildUrlFromPath(wsPath) : this._buildUrl(serverId, modeId);
     this._playerName = playerName;
     this._open();
   }
@@ -304,11 +304,11 @@ export class NetworkClient {
     return `${proto}://${loc.host}${path.startsWith('/') ? path : '/' + path}`;
   }
 
-  _buildUrl(serverId) {
+  _buildUrl(serverId, modeId = 'multiplayer') {
     const loc = typeof window !== 'undefined' ? window.location : { hostname:'localhost', host:'localhost:8787', protocol:'http:' };
     const isLocal = loc.hostname==='localhost' || loc.hostname==='127.0.0.1';
     const proto = isLocal ? 'ws' : 'wss';
-    return `${proto}://${loc.host}/ws/${serverId}`;
+    return `${proto}://${loc.host}/ws/${serverId}/${modeId}`;
   }
 }
 
