@@ -26,7 +26,18 @@ preview_id = "5e2f90cfcbd547639a16a6c608de9789"
 GAME_VERSION         = "1.0.0"
 MAX_PLAYERS_PER_ROOM = "20"
 SERVER_ID            = "asia-1"
+PUBLIC_DOMAIN        = "voxel.info100.kr"
 SERVER_REGION        = "Seoul"
 SERVER_FLAG          = "🇰🇷"
 ROUND_DURATION_SEC   = "300"
 BOT_COUNT            = "9"
+
+[[kv_namespaces]]
+binding = "SERVER_KV"
+id      = "replace_with_server_kv_id"
+preview_id = "replace_with_server_kv_preview_id"
+
+[[d1_databases]]
+binding = "USERS_DB"
+database_name = "voxel-users"
+database_id = "replace_with_d1_database_id"

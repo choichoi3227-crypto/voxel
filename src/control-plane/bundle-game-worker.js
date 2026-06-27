@@ -25,6 +25,8 @@ import apiSrc          from '../workers/api.js?raw' assert { type: 'text' };
 import roomRegistrySrc from '../workers/room-registry.js?raw' assert { type: 'text' };
 import constantsSrc    from '../workers/constants.js?raw' assert { type: 'text' };
 import ballisticsSrc   from '../workers/ballistics.js?raw' assert { type: 'text' };
+import protocolSrc     from '../workers/protocol.js?raw' assert { type: 'text' };
+import botGuardSrc     from '../workers/bot-guard.js?raw' assert { type: 'text' };
 
 /**
  * Produces a single-file ES module bundle equivalent to the multi-file
@@ -40,7 +42,7 @@ import ballisticsSrc   from '../workers/ballistics.js?raw' assert { type: 'text'
  * flattening approach. This function is kept as a fallback for
  * environments where only a single-file module upload is desired.
  */
-export function buildModuleParts() {
+export function buildGameWorkerModules() {
   return {
     'router.js':         routerSrc,
     'ws-handler.js':      wsHandlerSrc,
@@ -48,5 +50,7 @@ export function buildModuleParts() {
     'room-registry.js':   roomRegistrySrc,
     'constants.js':       constantsSrc,
     'ballistics.js':      ballisticsSrc,
+    'protocol.js':        protocolSrc,
+    'bot-guard.js':       botGuardSrc,
   };
 }

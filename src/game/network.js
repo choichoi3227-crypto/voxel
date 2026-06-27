@@ -46,8 +46,8 @@ export class NetworkClient {
 
   // ── Connection ──────────────────────────────────────────────
 
-  connect(serverId, playerName) {
-    this._serverUrl  = this._buildUrl(serverId);
+  connect(serverId, playerName, wsPath = null) {
+    this._serverUrl  = wsPath ? this._buildUrlFromPath(wsPath) : this._buildUrl(serverId);
     this._playerName = playerName;
     this._open();
   }
@@ -295,6 +295,13 @@ export class NetworkClient {
       p.z   = lerp(p.z,   p.tz,   alpha);
       p.yaw = lerpAngle(p.yaw, p.tyaw, alpha);
     }
+  }
+
+  _buildUrlFromPath(path) {
+    if (/^wss?:\/\//i.test(path)) return path;
+    const loc = typeof window !== 'undefined' ? window.location : { host:'localhost:8787', protocol:'http:' };
+    const proto = loc.protocol === 'https:' ? 'wss' : 'ws';
+    return `${proto}://${loc.host}${path.startsWith('/') ? path : '/' + path}`;
   }
 
   _buildUrl(serverId) {

@@ -26,6 +26,12 @@ export const WEAPON_BALLISTICS = {
   mp5:     { damage: 18,  headshotMult: 2.0, falloffStart: 10, falloffEnd: 35,  minDamageMult: 0.45, muzzleVelocity: 180, gravityMult: 0.4,  maxRange: 40,  pellets: 1, penetration: 0 },
   shotgun: { damage: 15,  headshotMult: 1.5, falloffStart: 5,  falloffEnd: 16,  minDamageMult: 0.1,  muzzleVelocity: 140, gravityMult: 0.55, maxRange: 20,  pellets: 9, penetration: 0 },
   deagle:  { damage: 55,  headshotMult: 2.0, falloffStart: 14, falloffEnd: 45,  minDamageMult: 0.5,  muzzleVelocity: 200, gravityMult: 0.4,  maxRange: 60,  pellets: 1, penetration: 1 },
+  beryl:   { damage: 31,  headshotMult: 2.35, falloffStart: 16, falloffEnd: 70,  minDamageMult: 0.50, muzzleVelocity: 210, gravityMult: 0.38, maxRange: 95,  pellets: 1, penetration: 2 },
+  sks:     { damage: 53,  headshotMult: 2.2,  falloffStart: 45, falloffEnd: 120, minDamageMult: 0.68, muzzleVelocity: 330, gravityMult: 0.20, maxRange: 180, pellets: 1, penetration: 2 },
+  kar98:   { damage: 95,  headshotMult: 2.4,  falloffStart: 70, falloffEnd: 180, minDamageMult: 0.72, muzzleVelocity: 360, gravityMult: 0.18, maxRange: 220, pellets: 1, penetration: 3 },
+  vector:  { damage: 16,  headshotMult: 2.0,  falloffStart: 8,  falloffEnd: 32,  minDamageMult: 0.42, muzzleVelocity: 165, gravityMult: 0.45, maxRange: 45,  pellets: 1, penetration: 0 },
+  ump45:   { damage: 22,  headshotMult: 2.0,  falloffStart: 12, falloffEnd: 42,  minDamageMult: 0.48, muzzleVelocity: 175, gravityMult: 0.42, maxRange: 55,  pellets: 1, penetration: 1 },
+  m249:    { damage: 26,  headshotMult: 2.15, falloffStart: 22, falloffEnd: 85,  minDamageMult: 0.52, muzzleVelocity: 250, gravityMult: 0.30, maxRange: 110, pellets: 1, penetration: 2 },
 };
 
 /** Maximum damage per shot for each weapon (server uses to clamp client reports) */
@@ -62,8 +68,8 @@ export const GAME_MODES = {
     id: 'battle_royale',
     label: '배틀로얄',
     teams: false,
-    maxPlayers: 20,
-    roundDurationSec: 600,
+    maxPlayers: 64,
+    roundDurationSec: 1200,
     botsAllowed: true,
     respawns: false,
     shrinkingZone: true,

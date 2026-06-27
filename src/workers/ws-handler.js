@@ -11,10 +11,11 @@
 import { MAX_PLAYERS } from './room-registry.js';
 import { WEAPON_DAMAGE, WEAPON_BALLISTICS } from './constants.js';
 import { clampReportedDamage } from './ballistics.js';
+import { SERVER_TICK_HZ, WS_PROTOCOL_VERSION, parseEnvelope, makeEnvelope } from './protocol.js';
 
 const RESPAWN_DELAY_MS = 4000;
 const MOVE_THROTTLE_MS = 50;   // ignore duplicate moves faster than 50ms
-const MAX_MSG_LEN      = 512;
+const MAX_MSG_LEN      = 1024;
 
 export function handleWebSocket(request, env, ctx, registry, roomKey, modeId, customConfig) {
   const { 0: client, 1: server } = new WebSocketPair();
@@ -38,9 +39,8 @@ export function handleWebSocket(request, env, ctx, registry, roomKey, modeId, cu
     // Sanity check size
     if (typeof evt.data !== 'string' || evt.data.length > MAX_MSG_LEN) return;
 
-    let msg;
-    try { msg = JSON.parse(evt.data); } catch { return; }
-    if (!msg || typeof msg.type !== 'string') return;
+    const msg = parseEnvelope(evt.data);
+    if (!msg) return;
 
     // Gate all non-join messages until player has joined
     if (!joined && msg.type !== 'join') return;
@@ -77,6 +77,9 @@ export function handleWebSocket(request, env, ctx, registry, roomKey, modeId, cu
           players:  room.playersSnapshot(playerId),
           ttlRemaining: room.ttlRemainingSec(now),
           roomKey,
+          protocolVersion: WS_PROTOCOL_VERSION,
+          tickHz: SERVER_TICK_HZ,
+          realtime: { serverAuthoritativeDamage: true, snapshotOnPing: true, targetTickMs: Math.round(1000 / SERVER_TICK_HZ) },
         }));
 
         room.broadcast({
@@ -231,7 +234,7 @@ export function handleWebSocket(request, env, ctx, registry, roomKey, modeId, cu
       // ── PING ───────────────────────────────────────────────
       case 'ping': {
         const pingTs = +msg.t || now;
-        server.send(JSON.stringify({ type: 'pong', t: pingTs, serverTime: now }));
+        server.send(JSON.stringify(makeEnvelope('pong', { t: pingTs, serverTime: now, players: room.playersSnapshot(playerId) })));
         const p = room.getPlayer(playerId);
         if (p) p.ping = now - pingTs;
         break;

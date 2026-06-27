@@ -72,7 +72,9 @@ export class Menu {
         <div id="panel-servers" style="width:640px">
           <div id="server-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
           <div style="display:flex;gap:10px;margin-top:14px;justify-content:center">
-            <button class="menu-btn" id="btn-quickplay">▶ QUICK PLAY</button>
+            <button class="menu-btn" id="btn-quickplay">▶ 지금 플레이</button>
+            <button class="menu-btn sec" id="btn-create-server">＋ 서버 제작</button>
+            <button class="menu-btn sec" id="btn-download">⬇ PC/Mobile 다운로드</button>
             <button class="menu-btn sec" id="btn-refresh">↺ REFRESH</button>
           </div>
         </div>
@@ -132,7 +134,7 @@ export class Menu {
       'screen-loading','load-bar','load-text',
       'screen-menu','menu-bg',
       'name-input','server-grid',
-      'btn-quickplay','btn-refresh',
+      'btn-quickplay','btn-create-server','btn-download','btn-refresh',
       'panel-servers','panel-settings','panel-leaderboard',
       'tab-servers','tab-settings','tab-leaderboard',
       'sl-sensitivity','lbl-sensitivity',
@@ -238,9 +240,32 @@ export class Menu {
       this._fetchLeaderboard();
     });
 
-    this._el['btn-quickplay']?.addEventListener('click', () => {
-      const best = this._servers.filter(s=>s.players<s.maxPlayers).sort((a,b)=>a.ping-b.ping)[0];
+    this._el['btn-quickplay']?.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/matchmake', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ modeId:'battle_royale' }), signal:AbortSignal.timeout(3000) });
+        const data = await res.json();
+        if (data?.server) return this.onPlay?.({ ...data.server, wsPath:data.wsPath });
+      } catch (_) {}
+      const best = this._servers.filter(s=>s.players<s.maxPlayers).sort((a,b)=>(a.placementScore??a.ping)-(b.placementScore??b.ping))[0];
       if (best) this.onPlay?.(best);
+    });
+
+    this._el['btn-create-server']?.addEventListener('click', async () => {
+      const ownerName = this.playerName;
+      try {
+        const res = await fetch('/api/servers/custom', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ownerName, maxPlayers:64, ttlSec:7200 }), signal:AbortSignal.timeout(5000) });
+        const data = await res.json();
+        if (data?.server) { alert('서버 제작 요청 완료: '+data.server.id); await this._fetchServers(); }
+      } catch { alert('현재 배포 환경에서는 커스텀 서버 API가 비활성화되어 있습니다.'); }
+    });
+
+    this._el['btn-download']?.addEventListener('click', () => {
+      const blob = new Blob([location.href], { type:'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'voxel-strike-web-launcher.txt';
+      a.click();
+      URL.revokeObjectURL(a.href);
     });
 
     this._el['btn-refresh']?.addEventListener('click', () => {
