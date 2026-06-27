@@ -4,6 +4,8 @@
 //   GET  /api/servers                     → own/KV server list for quick play
 //   POST /api/matchmake                   → lowest-load placement
 //   GET  /api/admin/overview              → admin summary
+//   POST /api/servers/custom              → create user-owned KV server record
+//   DELETE /api/servers/:id               → delete server record immediately
 //   GET  /api/health                      → liveness + load (for control-plane polling)
 //   GET  /api/rooms                       → live rooms held in THIS isolate
 //   GET  /api/room/:serverId/:mode/:inst  → single room status
@@ -34,6 +36,37 @@ export async function handleAPI(request, env, ctx, registry, url) {
     return json([{ id: env.SERVER_ID || 'asia-1', name: env.SERVER_NAME || env.SERVER_ID || 'Asia #1', region: env.SERVER_REGION || 'Seoul', flag: env.SERVER_FLAG || '🇰🇷', kind: env.SERVER_KIND || 'region', status: 'active', players: totalPlayers, maxPlayers: Math.max(parseInt(env.MAX_PLAYERS_PER_ROOM || '20', 10), rooms.reduce((n, r) => Math.max(n, r.maxPlayers || 20), 20)), endpoint: null }]);
   }
 
+
+  // POST /api/servers/custom — user-created server; metadata goes to custom KV, never GitHub.
+  if (path === '/servers/custom' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const ownerName = sanitizeText(body.ownerName || 'Player', 24);
+    const modeId = sanitizeText(body.modeId || 'battle_royale', 32);
+    const id = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    const ttlSec = clampInt(body.ttlSec, 900, 86400, 7200);
+    const maxPlayers = clampInt(body.maxPlayers, 2, 100, 64);
+    const server = {
+      id, name: `${ownerName} 서버`, region: env.SERVER_REGION || 'edge-local', flag: '🎮',
+      kind: 'custom', status: 'active', players: 0, maxPlayers, ownerName, modeId,
+      createdAt: Date.now(), ttlSec, endpoint: null,
+      wsPath: `/ws/${env.SERVER_ID || 'edge'}/${modeId}/${id}?owner=${encodeURIComponent(ownerName)}&instance=${id}&ttl=${ttlSec}&max=${maxPlayers}`,
+    };
+    await putKVJson(env.SERVER_KV || env.ROOMS, `server:${id}`, server, ttlSec + 60);
+    await putKVJson(env.ROOMS, `custom:${id}`, server, ttlSec + 60);
+    return json({ ok: true, server });
+  }
+
+  // DELETE /api/servers/:id — remove KV server metadata immediately.
+  const deleteServerMatch = path.match(/^\/servers\/([a-z0-9_-]+)$/i);
+  if (deleteServerMatch && method === 'DELETE') {
+    const id = deleteServerMatch[1];
+    await deleteKV(env.SERVER_KV || env.ROOMS, `server:${id}`);
+    await deleteKV(env.ROOMS, `custom:${id}`);
+    await deleteKV(env.ROOMS, `room:${id}:count`);
+    return json({ ok: true, deleted: true, id });
+  }
+
   // POST /api/matchmake — auto load-balancing endpoint for the "Play now" button.
   if (path === '/matchmake' && method === 'POST') {
     const rooms = registry.list();
@@ -43,7 +76,33 @@ export async function handleAPI(request, env, ctx, registry, url) {
 
   // GET /api/admin/overview — single-worker admin readout.
   if (path === '/admin/overview' && method === 'GET') {
-    return json({ serverId: env.SERVER_ID || 'unknown', region: env.SERVER_REGION || '', rooms: registry.list(), load: registry.totalPlayers(), adsenseConfigured: !!env.ADSENSE_CLIENT_ID, durableObjects: false });
+    return json({ serverId: env.SERVER_ID || 'unknown', region: env.SERVER_REGION || '', rooms: registry.list(), servers: await listStoredServers(env), load: registry.totalPlayers(), adsenseConfigured: !!env.ADSENSE_CLIENT_ID, durableObjects: false, botGuard: 'enabled' });
+  }
+
+  if (path === '/admin/cheats' && method === 'GET') {
+    return json(await listKVJson(env.SERVER_KV || env.ROOMS, 'cheat:'));
+  }
+
+  if (path === '/admin/clans' && method === 'GET') {
+    return json(await listKVJson(env.SERVER_KV || env.ROOMS, 'clan:'));
+  }
+
+  if (path === '/admin/events' && method === 'GET') {
+    return json(await listKVJson(env.SERVER_KV || env.ROOMS, 'event:'));
+  }
+
+  if (path === '/admin/settings' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const settings = {
+      adsenseClientId: sanitizeText(body.adsenseClientId || env.ADSENSE_CLIENT_ID || '', 80),
+      cloudflareApiEnabled: !!body.cloudflareApiEnabled,
+      gcpClientConfigured: !!body.gcpClientConfigured,
+      kvStrategy: 'custom_kv_only',
+      updatedAt: Date.now(),
+    };
+    await putKVJson(env.SERVER_KV || env.ROOMS, 'settings:global', settings, 0);
+    return json({ ok: true, settings });
   }
 
   // GET /api/health — liveness + current load, polled by the control-plane
@@ -69,9 +128,10 @@ export async function handleAPI(request, env, ctx, registry, url) {
   }
 
   // GET /api/room/:serverId/:modeId/:instanceId
-  const roomMatch = path.match(/^\/room\/([a-z0-9-]+)\/([a-z_]+)\/?([a-z0-9_-]*)$/i);
+  const roomMatch = path.match(/^\/room\/([a-z0-9-]+)(?:\/([a-z_]+)\/?([a-z0-9_-]*))?$/i);
   if (roomMatch && method === 'GET') {
-    const [, serverId, modeId, instanceId] = roomMatch;
+    const [, serverId, maybeModeId, instanceId] = roomMatch;
+    const modeId = maybeModeId || 'battle_royale';
     const roomKey = `${serverId}:${modeId}:${instanceId || 'main'}`;
     const room = registry.get(roomKey);
     if (!room) {
@@ -200,6 +260,43 @@ function validateLeaderboardToken(body) {
   } catch { return false; }
 }
 
+
+
+async function listStoredServers(env) {
+  return listKVJson(env.SERVER_KV || env.ROOMS, 'server:');
+}
+
+async function listKVJson(kv, prefix) {
+  if (!kv) return [];
+  try {
+    const listed = await kv.list({ prefix });
+    const out = [];
+    for (const key of listed.keys) {
+      const v = await kv.get(key.name, { type: 'json' }).catch(() => null);
+      if (v) out.push(v);
+    }
+    return out;
+  } catch { return []; }
+}
+
+async function putKVJson(kv, key, value, ttlSec = 0) {
+  if (!kv) return;
+  const opts = ttlSec > 0 ? { expirationTtl: ttlSec } : undefined;
+  try { await kv.put(key, JSON.stringify(value), opts); } catch (_) {}
+}
+
+async function deleteKV(kv, key) {
+  try { await kv?.delete(key); } catch (_) {}
+}
+
+function sanitizeText(value, max = 32) {
+  return String(value || '').replace(/[<>&"']/g, '').slice(0, max);
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  return Math.max(min, Math.min(max, Number.isFinite(n) ? n : fallback));
+}
 
 async function ensureUsersTable(env) {
   if (!env.USERS_DB) return;

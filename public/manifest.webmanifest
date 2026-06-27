@@ -1,0 +1,10 @@
+{
+  "name": "VOXEL STRIKE",
+  "short_name": "Voxel",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "background_color": "#080c10",
+  "theme_color": "#ff3333",
+  "description": "PUBG-style tactical voxel FPS for PC and mobile browsers."
+}

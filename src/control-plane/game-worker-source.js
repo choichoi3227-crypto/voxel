@@ -20,6 +20,8 @@ import apiSrc           from '../workers/api.js';
 import roomRegistrySrc  from '../workers/room-registry.js';
 import constantsSrc     from '../workers/constants.js';
 import ballisticsSrc    from '../workers/ballistics.js';
+import protocolSrc      from '../workers/protocol.js';
+import botGuardSrc      from '../workers/bot-guard.js';
 
 export function gameWorkerModuleParts() {
   return {
@@ -29,5 +31,7 @@ export function gameWorkerModuleParts() {
     'room-registry.js':  roomRegistrySrc,
     'constants.js':      constantsSrc,
     'ballistics.js':     ballisticsSrc,
+    'protocol.js':       protocolSrc,
+    'bot-guard.js':      botGuardSrc,
   };
 }

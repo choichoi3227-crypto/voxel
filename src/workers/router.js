@@ -102,15 +102,21 @@ export default {
 };
 
 function parseCustomConfig(params, modeId) {
-  if (modeId !== 'training') return null;
   const owner = params.get('owner');
-  if (!owner) return null;
+  const instance = params.get('instance');
+  if (!owner && !instance && modeId !== 'training') return null;
+  const maxDefault = modeId === 'training' ? 1 : 64;
   return {
-    ownerName:  String(owner).slice(0, 20),
-    instanceId: params.get('instance') || owner.slice(0, 12),
-    maxPlayers: 1,
-    ttlSec:     3600,
+    ownerName:  String(owner || 'Player').slice(0, 20),
+    instanceId: instance || String(owner || 'custom').slice(0, 12),
+    maxPlayers: clampInt(params.get('max'), 1, 100, maxDefault),
+    ttlSec:     clampInt(params.get('ttl'), 300, 86400, modeId === 'training' ? 3600 : 7200),
   };
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  return Math.max(min, Math.min(max, Number.isFinite(n) ? n : fallback));
 }
 
 async function snapshotToKV(env, registry) {

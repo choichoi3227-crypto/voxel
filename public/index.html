@@ -7,6 +7,8 @@
 <meta property="og:title" content="VOXEL STRIKE">
 <meta property="og:description" content="무료 브라우저 FPS 게임 — 6개 글로벌 서버, 멀티플레이">
 <title>VOXEL STRIKE</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#ff3333">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#080c10;color:#e0e0e0;font-family:'Courier New',monospace}
@@ -24,5 +26,6 @@ canvas{display:block;position:fixed;inset:0;z-index:1;cursor:crosshair}
     ⚠ JavaScript가 필요합니다.<br><small style="color:#666;font-size:13px;margin-top:8px;display:block">브라우저 설정에서 JavaScript를 활성화하세요.</small>
   </div>
 </noscript>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{})}</script>
 </body>
 </html>
